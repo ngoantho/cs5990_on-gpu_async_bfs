@@ -1,16 +1,15 @@
 {
     "configurations": [
         {
-            "name": "Linux",
+            "name": "Win32",
             "includePath": [
-                "${workspaceFolder}/harmonize.git/harmonize/cpp/**",
-                "${workspaceFolder}/**"
+                "${workspaceFolder}/harmonize.git/harmonize/cpp/**"
             ],
-            "defines": [],
+            "windowsSdkVersion": "10.0.22000.0",
+            "compilerPath": "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.5\\bin\\nvcc.EXE",
             "cStandard": "c17",
             "cppStandard": "c++17",
-            "intelliSenseMode": "linux-gcc-x64",
-            "compilerPath": "/etc/alternatives/cuda/bin/nvcc",
+            "intelliSenseMode": "windows-gcc-x64",
             "browse": {
                 "limitSymbolsToIncludedHeaders": true
             }
