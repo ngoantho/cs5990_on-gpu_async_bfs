@@ -1,152 +1,143 @@
+#include <iostream>
 #include <stdio.h>
-#include <stdlib.h>
-#include <math.h>
-
+#include "graph.h"
 #include "harmonize.git/harmonize/cpp/harmonize.h"
 using namespace util;
 
-// the state that will be stored per program instance and accessible by all work groups
-struct DeviceState
+// state that will be stored per program instance and accessible by all work groups
+// immutable, but can contain references and pointers to non-const data
+struct MyDeviceState
 {
+  int* adjacencyList;
+  int* edgesOffset;
+  int* edgesSize;
+  int* distance;
+  int* parent;
+  int N;
 };
 
-struct ProgramSpec
-{
-  static const size_t STASH_SIZE = 16;
-  static const size_t FRAME_SIZE = 8191;
-  static const size_t POOL_SIZE = 8191;
+struct BFSProgram {
+  using Type = void(*)(int);
 
-  template <typename PROGRAM>
-  __device__ static void initialize(PROGRAM prog)
-  {
-  }
-
-  template <typename PROGRAM>
-  __device__ static void finalize(PROGRAM prog)
-  {
-  }
-
-  template <typename PROGRAM>
-  __device__ static bool make_work(PROGRAM prog)
-  {
-    
-  }
-};
-
-#define NUM_NODES 5
-
-typedef struct {
-  int start;
-  int length;
-} Node;
-
-__global__ void naive_bfs(Node *nodes, int *edges, bool *frontier, bool *visited, int *cost, bool *done)
-{
-
-  int id = threadIdx.x + blockIdx.x * blockDim.x;
-  if (id > NUM_NODES)
-    *done = false;
-
-  if (frontier[id] == true && visited[id] == false)
-  {
-    printf("%d ", id); // This printf gives the order of vertices in BFS
-    frontier[id] = false;
-    visited[id] = true;
-    __syncthreads();
-    int k = 0;
-    int i;
-    int start = nodes[id].start;
-    int end = start + nodes[id].length;
-    for (int i = start; i < end; i++)
-    {
-      int nid = edges[i];
-
-      if (visited[nid] == false)
-      {
-        cost[nid] = cost[id] + 1;
-        frontier[nid] = true;
-        *done = false;
+  template<typename Program>
+  __device__ static void eval(Program program, int level) {
+    int this_id = blockIdx.x * blockDim.x + threadIdx.x;
+    // printf("%d:distance=%d\n", this_id, program.device.distance[this_id]);
+    // printf("%d:edgesOffset=%d\n", this_id, program.device.edgesOffset[this_id]);
+    // printf("%d:edgesSize=%d\n", this_id, program.device.edgesSize[this_id]);
+    if (this_id < program.device.N && program.device.distance[this_id] == level) {
+      for (int i = program.device.edgesOffset[this_id]; i < program.device.edgesOffset[this_id] + program.device.edgesSize[this_id]; i++) {
+        int edge = program.device.adjacencyList[i];
+        if (level + 1 < program.device.distance[edge]) {
+          program.device.distance[edge] = level + 1;
+          program.device.parent[edge] = i;
+          printf("%d: distance[%d] = %d\n", this_id, edge, level+1);
+          printf("%d: parent[%d] = %d\n", this_id, edge, i);
+        }
       }
     }
   }
-}
+};
 
-int main(int argc, char* argv[]) {
+struct MyProgramSpec {
+  typedef OpUnion<BFSProgram> OpSet;
+  typedef MyDeviceState DeviceState;
+
+  /*
+    type Program {
+      device: DeviceState
+      template: Op
+    }
+  */
+
+  // called by each work group at start
+  template <typename Program>
+  __device__ static void initialize(Program program) {}
+
+  // called by each work group at end
+  template <typename Program>
+  __device__ static void finalize(Program program) {}
+
+  // called by each work group if need work
+  template <typename Program>
+  __device__ static bool make_work(Program program) {
+    int level = 0;
+    program.template async<BFSProgram>(level);
+    return true;
+    /*
+    unsigned int iter_step_length = 1u;
+    iter::Iter<unsigned int> iter = program.device.iterator->leap(iter_step_length);
+
+    unsigned int index = 0;
+    while (iter.step(index)) {
+      program.template async<BFSProgram>(index);
+    }
+    return !program.device.iterator->done();
+    */
+  }
+};
+
+using ProgType = AsyncProgram<MyProgramSpec>;
+
+int main(int argc, char *argv[])
+{
   cli::ArgSet args(argc, argv);
+  
+  // arguments
+  unsigned int batch_count = args["batch_count"] | 1;
+  std::cout << "group count: " << batch_count << std::endl;
+  unsigned int run_count = args["run_count"] | 1;
+  std::cout << "cycle count: " << run_count << std::endl;
+  unsigned int arena_size = args["arena_size"] | 0x10000;
+  std::cout << "arena size: " << arena_size << std::endl;
 
-  int num_blocks = args["num_blocks"] | 1;
-  int threads = args["threads"] | 5;
+  int numVertices = args["num_vertices"];
+  int numEdges = args["num_edges"];
+  Graph G(numVertices, numEdges);
+  
+  unsigned int startVertex = args["start_vertex"];
+  std::cout << "start vertex: " << startVertex << std::endl;
 
-  Node nodes[NUM_NODES];
-  int edges[NUM_NODES];
+  // init DeviceState
+  MyDeviceState ds;
+  ds.N = numVertices;
 
-  nodes[0].start = 0;
-  nodes[0].length = 2;
+  std::vector<int> distance(G.numVertices, std::numeric_limits<int>::max());
+  distance[startVertex] = 0;
+  host::DevBuf<int> dev_distance = host::DevBuf<int>(G.numVertices);
+  dev_distance << distance;
+  ds.distance = dev_distance;
 
-  nodes[1].start = 2;
-  nodes[1].length = 1;
+  std::vector<int> parent(G.numVertices, std::numeric_limits<int>::max());
+  parent[startVertex] = 0;
+  host::DevBuf<int> dev_parent = host::DevBuf<int>(G.numVertices);
+  dev_parent << parent;
+  ds.parent = dev_parent;
 
-  nodes[2].start = 3;
-  nodes[2].length = 1;
+  host::DevBuf<int> dev_adjacencyList = host::DevBuf<int>(G.numEdges);
+  dev_adjacencyList << G.adjacencyList;
+  ds.adjacencyList = dev_adjacencyList;
 
-  nodes[3].start = 4;
-  nodes[3].length = 1;
+  host::DevBuf<int> dev_edgesOffset = host::DevBuf<int>(G.numVertices);
+  dev_edgesOffset << G.edgesOffset;
+  ds.edgesOffset = dev_edgesOffset;
 
-  nodes[4].start = 5;
-  nodes[4].length = 0;
+  host::DevBuf<int> dev_edgesSize = host::DevBuf<int>(G.numVertices);
+  dev_edgesSize << G.edgesSize;
+  ds.edgesSize = dev_edgesSize;
 
-  edges[0] = 1;
-  edges[1] = 2;
-  edges[2] = 4;
-  edges[3] = 3;
-  edges[4] = 4;
+  // declare program instance
+  ProgType::Instance instance(arena_size, ds);
+  cudaDeviceSynchronize();
+  host::check_error();
 
-  bool frontier[NUM_NODES] = {false};
-  bool visited[NUM_NODES] = {false};
-  int cost[NUM_NODES] = {0};
+  // init program instance
+  init<ProgType>(instance, 32);
+  cudaDeviceSynchronize();
+  host::check_error();
 
-  int source = 0;
-  frontier[source] = true;
-
-  Node* d_node;
-  cudaMalloc((void**)&d_node, sizeof(Node)*NUM_NODES);
-  cudaMemcpy(d_node, nodes, sizeof(Node) * NUM_NODES, cudaMemcpyHostToDevice);
-
-  int *d_edge;
-  cudaMalloc((void **)&d_edge, sizeof(Node) * NUM_NODES);
-  cudaMemcpy(d_edge, edges, sizeof(Node) * NUM_NODES, cudaMemcpyHostToDevice);
-
-  bool *d_frontier;
-  cudaMalloc((void **)&d_frontier, sizeof(bool) * NUM_NODES);
-  cudaMemcpy(d_frontier, frontier, sizeof(bool) * NUM_NODES, cudaMemcpyHostToDevice);
-
-  bool *d_visited;
-  cudaMalloc((void **)&d_visited, sizeof(bool) * NUM_NODES);
-  cudaMemcpy(d_visited, visited, sizeof(bool) * NUM_NODES, cudaMemcpyHostToDevice);
-
-  int *d_cost;
-  cudaMalloc((void **)&d_cost, sizeof(int) * NUM_NODES);
-  cudaMemcpy(d_cost, cost, sizeof(int) * NUM_NODES, cudaMemcpyHostToDevice);
-
-  bool done;
-  bool *d_done;
-  cudaMalloc((void **)&d_done, sizeof(bool));
-  int count = 0;
-
-  printf("Order: \n\n");
-  do {
-    count++;
-    done = true;
-    cudaMemcpy(d_done, &done, sizeof(bool), cudaMemcpyHostToDevice);
-    naive_bfs<<<num_blocks, threads>>>(d_node, d_edge, d_frontier, d_visited, d_cost, d_done);
-    cudaMemcpy(&done, d_done, sizeof(bool), cudaMemcpyDeviceToHost);
-  } while (!done);
-
-  cudaMemcpy(cost, d_cost, sizeof(int)*NUM_NODES, cudaMemcpyDeviceToHost);
-  printf("number of times the kernel is called: %d\n", count);
-
-  printf("\nCost: ");
-  for (int i = 0; i < NUM_NODES; i++)
-    printf("%d    ", cost[i]);
-  printf("\n");
+  // exec program instance
+  exec<ProgType>(instance, batch_count, run_count);
+  cudaDeviceSynchronize();
+  host::check_error();
 }
