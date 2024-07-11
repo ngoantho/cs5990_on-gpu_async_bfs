@@ -1,7 +1,7 @@
-all: main.exe
+all: main
 
 clean:
 	rm -f *.exe
 
-main.exe: main.cu
+main: main.cu
 	nvcc -std=c++17 -o main.exe main.cu -I./harmonize.git/harmonize/cpp

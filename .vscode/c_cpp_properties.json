@@ -20,7 +20,7 @@
                 "${workspaceFolder}/harmonize.git/harmonize/cpp/**"
             ],
             "defines": [],
-            "compilerPath": "/etc/alternatives/cuda/bin/nvcc",
+            "compilerPath": "/usr/bin/nvcc",
             "cStandard": "c17",
             "cppStandard": "gnu++14",
             "intelliSenseMode": "linux-gcc-x64",
