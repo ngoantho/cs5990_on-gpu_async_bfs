@@ -22,7 +22,7 @@
             "defines": [],
             "compilerPath": "/usr/bin/nvcc",
             "cStandard": "c17",
-            "cppStandard": "gnu++14",
+            "cppStandard": "c++17",
             "intelliSenseMode": "linux-gcc-x64",
             "browse": {
                 "limitSymbolsToIncludedHeaders": true
