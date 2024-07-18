@@ -16,43 +16,30 @@ typedef struct {
 // groups immutable, but can contain references and pointers to non-const data
 struct MyDeviceState {
   Node *node_arr;
-  bool done;
   int node_count;
 };
 
 struct MyProgramOp {
-  using Type = void (*)(int level);
+  using Type = void (*)(int level, Node* node);
 
   template <typename Program>
-  __device__ static void eval(Program program, int level) {
-    int this_id = blockIdx.x * blockDim.x + threadIdx.x;
+  __device__ static void eval(Program program, int level, Node* node) {
+
     Node node = program.device.node_arr[this_id];
-    printf("depth %d\n", node.depth);
-    if (node.depth != level) return;
-    else if (node.edge_count == 0) return;
+    if (node.depth != level) return; // TODO: <=
+    // else if (node.edge_count == 0) return;
 
     printf("node %d, depth %d\n", node.id, node.depth);
-    program.device.done = false;
+    // TODO: do atomic min operations to the current node
     for (int i = 0; i < node.edge_count; i++)
     {
       int edge_id = node.edge_arr[i];
-      Node edge_node = program.device.node_arr[edge_id];
-      printf("edge %d, depth %d->%d\n", edge_node.id, edge_node.depth, node.depth+1);
+      Node& edge_node = program.device.node_arr[edge_id]; // TODO: explore adjacent nodes
+      printf("edge %d, depth %d->%d\n", edge_node.id, edge_node.depth, node.depth+1); // TODO: atomic min
       edge_node.depth = node.depth + 1;
-    }
 
-    /*
-    int this_id = blockIdx.x * blockDim.x + threadIdx.x;
-    if (this_id != id) return;
-    Node node = program.device.node_arr[id];
-    printf("id: %d\n", node.id);
-    printf("edge count: %d\n", node.edge_count);
-    for (int i = 0; i < node.edge_count; i++)
-    {
-      printf("next id: %d\n", node.edge_arr[i]);
-      program.template async<MyProgramOp>(node.edge_arr[i]);
+      program.template async<MyProgramOp>(level + 1, &edge_node);
     }
-    */
   }
 };
 
@@ -78,14 +65,8 @@ struct MyProgramSpec {
   // called by each work group if need work
   template <typename Program>
   __device__ static bool make_work(Program program) {
-    int level = 1;
-    do {
-      printf("level %d\n", level);
-      program.device.done = true;
-      program.template async<MyProgramOp>(level);
-      level++;
-    } while (!program.device.done);
-    return program.device.done;
+    program.template async<MyProgramOp>(0, );
+    return true;
   }
 };
 
@@ -105,7 +86,6 @@ int main(int argc, char *argv[]) {
   // init DeviceState
   MyDeviceState ds;
   ds.node_count = 5;
-  ds.done = false;
 
   std::vector<Node> nodes = {
       {.id = 0, .edge_count = 3, .edge_arr = nullptr, .visited = false, .depth = -1},
