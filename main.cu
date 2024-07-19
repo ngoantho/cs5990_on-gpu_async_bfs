@@ -9,7 +9,7 @@ typedef struct {
   int edge_count; // edges that branch off
   int* edge_arr; // idx of nodes
   int visited; // base case: node is visited
-  int depth; // compare depth of this node and incoming depth
+  unsigned int depth; // compare depth of this node and incoming depth
 } Node;
 
 // state that will be stored per program instance and accessible by all work
@@ -22,18 +22,20 @@ struct MyDeviceState {
 };
 
 struct MyProgramOp {
-  using Type = void (*)(Node* node);
+  using Type = void (*)(Node* node, unsigned int current_depth);
 
   template <typename PROGRAM>
-  __device__ static void eval(PROGRAM prog, Node* node) {
-    // printf("node %d\n", node->id);
-
+  __device__ static void eval(PROGRAM prog, Node* node, unsigned int current_depth) {
     // if this node is already visited, then skip it
-    if (atomicAnd(&node->visited, 1)) {
+    // TODO: base case: aready visited by another thread with shorter distance
+    if (atomicMin(&node->depth, current_depth) <= current_depth) {
       printf("node %d visited already\n", node->id);
       return; // base case
     }
 
+    printf("node %d depth %u\n", node->id, node->depth);
+
+    /*
     // set visited bit to 1    
     atomicAdd(&node->visited, 1);
 
@@ -41,12 +43,13 @@ struct MyProgramOp {
     if (atomicAnd(&node->visited, 1)) {
       printf("node %d visited=1\n", node->id);
     }
+    */
 
     for (int i = 0; i < node->edge_count; i++) {
       int edge_id = node->edge_arr[i];
       Node& edge_node = prog.device.node_arr[edge_id];
-      printf("edge id %d, node id %d\n", edge_id, edge_node.id);
-      prog.template async<MyProgramOp>(&edge_node);
+      printf("%d -> edge id %d, depth %u\n", node->id, edge_id, edge_node.depth);
+      prog.template async<MyProgramOp>(&edge_node, current_depth + 1);
     }
   }
 };
@@ -79,7 +82,7 @@ struct MyProgramSpec {
   __device__ static bool make_work(PROGRAM prog) {
     unsigned int index;
     if (prog.device.iterator->step(index)) {
-      prog.template async<MyProgramOp>(&prog.device.node_arr[0]);
+      prog.template async<MyProgramOp>(&prog.device.node_arr[0], 0);
     }
     return false;
   }
@@ -108,13 +111,12 @@ int main(int argc, char *argv[]) {
 	ds.iterator = iterator;
 
   std::vector<Node> nodes = {
-      {.id = 0, .edge_count = 3, .edge_arr = nullptr, .visited = 0, .depth = 0},
-      {.id = 1, .edge_count = 2, .edge_arr = nullptr, .visited = 0, .depth = 0},
-      {.id = 2, .edge_count = 1, .edge_arr = nullptr, .visited = 0, .depth = 0},
-      {.id = 3, .edge_count = 1, .edge_arr = nullptr, .visited = 0, .depth = 0},
-      {.id = 4, .edge_count = 0, .edge_arr = nullptr, .visited = 0, .depth = 0},
+      {.id = 0, .edge_count = 3, .edge_arr = nullptr, .visited = 0, .depth = 0xFFFFFFFF},
+      {.id = 1, .edge_count = 2, .edge_arr = nullptr, .visited = 0, .depth = 0xFFFFFFFF},
+      {.id = 2, .edge_count = 2, .edge_arr = nullptr, .visited = 0, .depth = 0xFFFFFFFF},
+      {.id = 3, .edge_count = 3, .edge_arr = nullptr, .visited = 0, .depth = 0xFFFFFFFF},
+      {.id = 4, .edge_count = 3, .edge_arr = nullptr, .visited = 0, .depth = 0xFFFFFFFF},
   };
-  nodes[0].depth = 1;
   
   std::vector<int> v0 = {2, 3, 4};
   host::DevBuf<int> dev_v0(3);
@@ -126,15 +128,20 @@ int main(int argc, char *argv[]) {
   dev_v1 << v1;
   nodes[1].edge_arr = dev_v1;
 
-  std::vector<int> v2 = {3};
-  host::DevBuf<int> dev_v2(1);
+  std::vector<int> v2 = {0, 3};
+  host::DevBuf<int> dev_v2(2);
   dev_v2 << v2;
   nodes[2].edge_arr = dev_v2;
 
-  std::vector<int> v3 = {4};
-  host::DevBuf<int> dev_v3(1);
+  std::vector<int> v3 = {4, 1, 2};
+  host::DevBuf<int> dev_v3(3);
   dev_v3 << v3;
   nodes[3].edge_arr = dev_v3;
+
+  std::vector<int> v4 = {0, 1, 3};
+  host::DevBuf<int> dev_v4(3);
+  dev_v4 << v4;
+  nodes[4].edge_arr = dev_v4;
 
   host::DevBuf<Node> dev_nodes = host::DevBuf<Node>(ds.node_count);
   dev_nodes << nodes;
