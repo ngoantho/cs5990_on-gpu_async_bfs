@@ -17,6 +17,8 @@ typedef struct {
 struct MyDeviceState {
   Node *node_arr;
   int node_count;
+  // TODO: int pointer
+  iter::AtomicIter<unsigned int>* iterator;
 };
 
 struct MyProgramOp {
@@ -43,6 +45,7 @@ struct MyProgramOp {
     for (int i = 0; i < node->edge_count; i++) {
       int edge_id = node->edge_arr[i];
       Node& edge_node = prog.device.node_arr[edge_id];
+      printf("edge id %d, node id %d\n", edge_id, edge_node.id);
       prog.template async<MyProgramOp>(&edge_node);
     }
   }
@@ -74,8 +77,11 @@ struct MyProgramSpec {
   // called by each work group if need work
   template <typename PROGRAM>
   __device__ static bool make_work(PROGRAM prog) {
-    prog.template async<MyProgramOp>(&prog.device.node_arr[0]);
-    return true;
+    unsigned int index;
+    if (prog.device.iterator->step(index)) {
+      prog.template async<MyProgramOp>(&prog.device.node_arr[0]);
+    }
+    return false;
   }
 };
 
@@ -95,6 +101,11 @@ int main(int argc, char *argv[]) {
   // init DeviceState
   MyDeviceState ds;
   ds.node_count = 5;
+
+  iter::AtomicIter<unsigned int> host_iter(0, 1);
+	host::DevBuf<iter::AtomicIter<unsigned int>> iterator;
+	iterator << host_iter;
+	ds.iterator = iterator;
 
   std::vector<Node> nodes = {
       {.id = 0, .edge_count = 3, .edge_arr = nullptr, .visited = 0, .depth = 0},
@@ -140,7 +151,11 @@ int main(int argc, char *argv[]) {
   host::check_error();
 
   // exec program instance
-  exec<ProgType>(instance, batch_count, run_count);
-  cudaDeviceSynchronize();
-  host::check_error();
+  do {
+			// Give the number of work groups and the size of the chunks pulled from
+			// the io buffer
+			exec<ProgType>(instance,batch_count,run_count);
+			cudaDeviceSynchronize();
+			host::check_error();
+		} while ( ! instance.complete() );
 }
