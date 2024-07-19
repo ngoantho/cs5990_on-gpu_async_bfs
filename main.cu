@@ -6,10 +6,10 @@ using namespace util;
 
 typedef struct {
   int id;
-  int edge_count;
-  int* edge_arr;
-  bool visited;
-  int depth;
+  int edge_count; // edges that branch off
+  int* edge_arr; // idx of nodes
+  int visited; // base case: node is visited
+  int depth; // compare depth of this node and incoming depth
 } Node;
 
 // state that will be stored per program instance and accessible by all work
@@ -20,25 +20,30 @@ struct MyDeviceState {
 };
 
 struct MyProgramOp {
-  using Type = void (*)(int level, Node* node);
+  using Type = void (*)(Node* node);
 
-  template <typename Program>
-  __device__ static void eval(Program program, int level, Node* node) {
+  template <typename PROGRAM>
+  __device__ static void eval(PROGRAM prog, Node* node) {
+    // printf("node %d\n", node->id);
 
-    Node node = program.device.node_arr[this_id];
-    if (node.depth != level) return; // TODO: <=
-    // else if (node.edge_count == 0) return;
+    // if this node is already visited, then skip it
+    if (atomicAnd(&node->visited, 1)) {
+      printf("node %d visited already\n", node->id);
+      return; // base case
+    }
 
-    printf("node %d, depth %d\n", node.id, node.depth);
-    // TODO: do atomic min operations to the current node
-    for (int i = 0; i < node.edge_count; i++)
-    {
-      int edge_id = node.edge_arr[i];
-      Node& edge_node = program.device.node_arr[edge_id]; // TODO: explore adjacent nodes
-      printf("edge %d, depth %d->%d\n", edge_node.id, edge_node.depth, node.depth+1); // TODO: atomic min
-      edge_node.depth = node.depth + 1;
+    // set visited bit to 1    
+    atomicAdd(&node->visited, 1);
 
-      program.template async<MyProgramOp>(level + 1, &edge_node);
+    // verify visited bit
+    if (atomicAnd(&node->visited, 1)) {
+      printf("node %d visited=1\n", node->id);
+    }
+
+    for (int i = 0; i < node->edge_count; i++) {
+      int edge_id = node->edge_arr[i];
+      Node& edge_node = prog.device.node_arr[edge_id];
+      prog.template async<MyProgramOp>(&edge_node);
     }
   }
 };
@@ -47,25 +52,29 @@ struct MyProgramSpec {
   typedef OpUnion<MyProgramOp> OpSet;
   typedef MyDeviceState DeviceState;
 
+  static const size_t STASH_SIZE =   16;
+	static const size_t FRAME_SIZE = 8191;
+	static const size_t  POOL_SIZE = 8191;
+
   /*
-    type Program {
+    type PROGRAM {
       device: DeviceState
       template: Op
     }
   */
 
   // called by each work group at start
-  template <typename Program>
-  __device__ static void initialize(Program program) {}
+  template <typename PROGRAM>
+  __device__ static void initialize(PROGRAM prog) {}
 
   // called by each work group at end
-  template <typename Program>
-  __device__ static void finalize(Program program) {}
+  template <typename PROGRAM>
+  __device__ static void finalize(PROGRAM prog) {}
 
   // called by each work group if need work
-  template <typename Program>
-  __device__ static bool make_work(Program program) {
-    program.template async<MyProgramOp>(0, );
+  template <typename PROGRAM>
+  __device__ static bool make_work(PROGRAM prog) {
+    prog.template async<MyProgramOp>(&prog.device.node_arr[0]);
     return true;
   }
 };
@@ -88,11 +97,11 @@ int main(int argc, char *argv[]) {
   ds.node_count = 5;
 
   std::vector<Node> nodes = {
-      {.id = 0, .edge_count = 3, .edge_arr = nullptr, .visited = false, .depth = -1},
-      {.id = 1, .edge_count = 2, .edge_arr = nullptr, .visited = false, .depth = -1},
-      {.id = 2, .edge_count = 1, .edge_arr = nullptr, .visited = false, .depth = -1},
-      {.id = 3, .edge_count = 1, .edge_arr = nullptr, .visited = false, .depth = -1},
-      {.id = 4, .edge_count = 0, .edge_arr = nullptr, .visited = false, .depth = -1},
+      {.id = 0, .edge_count = 3, .edge_arr = nullptr, .visited = 0, .depth = 0},
+      {.id = 1, .edge_count = 2, .edge_arr = nullptr, .visited = 0, .depth = 0},
+      {.id = 2, .edge_count = 1, .edge_arr = nullptr, .visited = 0, .depth = 0},
+      {.id = 3, .edge_count = 1, .edge_arr = nullptr, .visited = 0, .depth = 0},
+      {.id = 4, .edge_count = 0, .edge_arr = nullptr, .visited = 0, .depth = 0},
   };
   nodes[0].depth = 1;
   
