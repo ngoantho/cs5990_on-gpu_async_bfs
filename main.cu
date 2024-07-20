@@ -26,14 +26,16 @@ struct MyProgramOp {
 
   template <typename PROGRAM>
   __device__ static void eval(PROGRAM prog, Node* node, unsigned int current_depth) {
+    int this_id = blockIdx.x * blockDim.x + threadIdx.x;
+
     // if this node is already visited, then skip it
     // TODO: base case: aready visited by another thread with shorter distance
     if (atomicMin(&node->depth, current_depth) <= current_depth) {
-      printf("node %d visited already\n", node->id);
+      printf("[%d] node %d visited already\n", this_id, node->id);
       return; // base case
     }
 
-    printf("node %d depth %u\n", node->id, node->depth);
+    printf("[%d] node %d depth %u\n", this_id, node->id, node->depth);
 
     /*
     // set visited bit to 1    
