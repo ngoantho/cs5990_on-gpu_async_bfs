@@ -31,11 +31,11 @@ struct MyProgramOp {
     // if this node is already visited, then skip it
     // TODO: base case: aready visited by another thread with shorter distance
     if (atomicMin(&node->depth, current_depth) <= current_depth) {
-      printf("[%d] node %d visited already\n", this_id, node->id);
+      printf("[%d] node %d visited already: depth=%u, incoming=%u\n", this_id, node->id, node->depth, current_depth);
       return; // base case
     }
 
-    printf("[%d] node %d depth %u\n", this_id, node->id, node->depth);
+    printf("[%d] node %d: depth=%u\n", this_id, node->id, node->depth);
 
     /*
     // set visited bit to 1    
@@ -50,7 +50,6 @@ struct MyProgramOp {
     for (int i = 0; i < node->edge_count; i++) {
       int edge_id = node->edge_arr[i];
       Node& edge_node = prog.device.node_arr[edge_id];
-      printf("%d -> edge id %d, depth %u\n", node->id, edge_id, edge_node.depth);
       prog.template async<MyProgramOp>(&edge_node, current_depth + 1);
     }
   }
