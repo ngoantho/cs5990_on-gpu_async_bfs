@@ -2,11 +2,15 @@
 #include <iostream>
 #include <stdio.h>
 #include <vector>
+#include <string>
+#include <sstream>
+#include <fstream>
+#include <map> 
 using namespace util;
 
 typedef struct {
   int id;
-  int edge_count; // edges that branch off
+  size_t edge_count; // edges that branch off
   int* edge_arr; // idx of nodes
   int visited; // base case: node is visited
   unsigned int depth; // compare depth of this node and incoming depth
@@ -15,9 +19,8 @@ typedef struct {
 // state that will be stored per program instance and accessible by all work
 // groups immutable, but can contain references and pointers to non-const data
 struct MyDeviceState {
-  Node *node_arr;
+  Node* node_arr;
   int node_count;
-  // TODO: int pointer
   iter::AtomicIter<unsigned int>* iterator;
 };
 
@@ -26,10 +29,10 @@ struct MyProgramOp {
 
   template <typename PROGRAM>
   __device__ static void eval(PROGRAM prog, Node* node, unsigned int current_depth) {
+    /* TODO parse node
     int this_id = blockIdx.x * blockDim.x + threadIdx.x;
 
     // if this node is already visited, then skip it
-    // TODO: base case: aready visited by another thread with shorter distance
     if (atomicMin(&node->depth, current_depth) <= current_depth) {
       printf("[%d] node %d visited already: depth=%u, incoming=%u\n", this_id, node->id, node->depth, current_depth);
       return; // base case
@@ -37,21 +40,12 @@ struct MyProgramOp {
 
     printf("[%d] node %d: depth=%u\n", this_id, node->id, node->depth);
 
-    /*
-    // set visited bit to 1    
-    atomicAdd(&node->visited, 1);
-
-    // verify visited bit
-    if (atomicAnd(&node->visited, 1)) {
-      printf("node %d visited=1\n", node->id);
-    }
-    */
-
     for (int i = 0; i < node->edge_count; i++) {
       int edge_id = node->edge_arr[i];
       Node& edge_node = prog.device.node_arr[edge_id];
       prog.template async<MyProgramOp>(&edge_node, current_depth + 1);
     }
+    */
   }
 };
 
@@ -81,10 +75,14 @@ struct MyProgramSpec {
   // called by each work group if need work
   template <typename PROGRAM>
   __device__ static bool make_work(PROGRAM prog) {
+    /* TODO init traversal
     unsigned int index;
     if (prog.device.iterator->step(index)) {
       prog.template async<MyProgramOp>(&prog.device.node_arr[0], 0);
     }
+    */
+    Node node = prog.device.node_arr[28];
+    printf("%d\n", node.id);
     return false;
   }
 };
@@ -101,52 +99,85 @@ int main(int argc, char *argv[]) {
   std::cout << "cycle count: " << run_count << std::endl;
   unsigned int arena_size = args["arena_size"] | 0x10000;
   std::cout << "arena size: " << arena_size << std::endl;
+  std::string file_str = args.get_flag_str("file");
+  std::cout << "parsing " << file_str << "..." << std::endl;
 
   // init DeviceState
   MyDeviceState ds;
-  ds.node_count = 5;
+  ds.node_count = 0;
 
   iter::AtomicIter<unsigned int> host_iter(0, 1);
 	host::DevBuf<iter::AtomicIter<unsigned int>> iterator;
 	iterator << host_iter;
 	ds.iterator = iterator;
 
-  std::vector<Node> nodes = {
-      {.id = 0, .edge_count = 3, .edge_arr = nullptr, .visited = 0, .depth = 0xFFFFFFFF},
-      {.id = 1, .edge_count = 2, .edge_arr = nullptr, .visited = 0, .depth = 0xFFFFFFFF},
-      {.id = 2, .edge_count = 2, .edge_arr = nullptr, .visited = 0, .depth = 0xFFFFFFFF},
-      {.id = 3, .edge_count = 3, .edge_arr = nullptr, .visited = 0, .depth = 0xFFFFFFFF},
-      {.id = 4, .edge_count = 3, .edge_arr = nullptr, .visited = 0, .depth = 0xFFFFFFFF},
-  };
-  
-  std::vector<int> v0 = {2, 3, 4};
-  host::DevBuf<int> dev_v0(3);
-  dev_v0 << v0;
-  nodes[0].edge_arr = dev_v0;
+  std::vector<Node> nodes;
+  std::map<std::string, std::vector<int>> adjacency_graph;
 
-  std::vector<int> v1 = {3, 4};
-  host::DevBuf<int> dev_v1(2);
-  dev_v1 << v1;
-  nodes[1].edge_arr = dev_v1;
+  std::ifstream file(file_str);
+  if (!file.is_open()) {
+    std::cerr << "unable to open " << file_str << std::endl;
+    return 1;
+  }
 
-  std::vector<int> v2 = {0, 3};
-  host::DevBuf<int> dev_v2(2);
-  dev_v2 << v2;
-  nodes[2].edge_arr = dev_v2;
+  std::string line;
+  unsigned int line_idx = 0;
+  while (std::getline(file, line)) {
+    line_idx++;
+    if (line.substr(0, 2) == "%%") {
+      line_idx--; // trigger line_idx == 1
+    }
+    else if (line_idx == 1) {
+      std::string token;
+      std::stringstream ss(line);
 
-  std::vector<int> v3 = {4, 1, 2};
-  host::DevBuf<int> dev_v3(3);
-  dev_v3 << v3;
-  nodes[3].edge_arr = dev_v3;
+      // parse node count
+      getline(ss, token, ' ');
+      ds.node_count = std::stoi(token) + 1;
+      nodes = std::vector<Node>(ds.node_count);
+    }
+    else {
+      std::string token, node;
+      std::stringstream ss(line);
 
-  std::vector<int> v4 = {0, 1, 3};
-  host::DevBuf<int> dev_v4(3);
-  dev_v4 << v4;
-  nodes[4].edge_arr = dev_v4;
+      // parse node
+      getline(ss, token, ' ');
+      node = token;
 
-  host::DevBuf<Node> dev_nodes = host::DevBuf<Node>(ds.node_count);
+      // parse edge
+      getline(ss, token, ' ');
+      adjacency_graph[node].push_back(std::stoi(token));
+    }
+  }
+
+  // finally close file
+  file.close();
+
+  for(std::map<std::string, std::vector<int>>::iterator it = adjacency_graph.begin(); it != adjacency_graph.end(); it++) {
+    std::string id = it->first;
+    std::vector<int> edges = it->second;
+    
+    host::DevBuf<int> dev_edges(edges.size());
+    dev_edges << edges;
+
+    Node node = {
+      .id = std::stoi(id),
+      .edge_count = edges.size(),
+      .edge_arr = dev_edges,
+      .visited = 0,
+      .depth = 0xFFFFFFFF
+    };
+    nodes.at(node.id) = node;
+  }
+
+  host::DevBuf<Node> dev_nodes(ds.node_count);
   dev_nodes << nodes;
   ds.node_arr = dev_nodes;
+
+  if (ds.node_count == 0) {
+    std::cerr << "error: node count = 0" << std::endl;
+    return 0;
+  }
   
   // declare program instance
   ProgType::Instance instance(arena_size, ds);
