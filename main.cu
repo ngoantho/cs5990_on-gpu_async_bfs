@@ -10,9 +10,8 @@ using namespace util;
 
 typedef struct {
   int id;
-  size_t edge_count; // edges that branch off
-  int* edge_arr; // idx of nodes
-  int visited; // base case: node is visited
+  size_t edge_count;
+  size_t edge_offset;
   unsigned int depth; // compare depth of this node and incoming depth
 } Node;
 
@@ -21,6 +20,8 @@ typedef struct {
 struct MyDeviceState {
   Node* node_arr;
   int node_count;
+  int* edge_arr;
+  int root_node;
   iter::AtomicIter<unsigned int>* iterator;
 };
 
@@ -29,23 +30,22 @@ struct MyProgramOp {
 
   template <typename PROGRAM>
   __device__ static void eval(PROGRAM prog, Node* node, unsigned int current_depth) {
-    /* TODO parse node
-    int this_id = blockIdx.x * blockDim.x + threadIdx.x;
+    // int this_id = blockIdx.x * blockDim.x + threadIdx.x;
 
     // if this node is already visited, then skip it
     if (atomicMin(&node->depth, current_depth) <= current_depth) {
-      printf("[%d] node %d visited already: depth=%u, incoming=%u\n", this_id, node->id, node->depth, current_depth);
+      // printf("[%d] node %d visited already: depth=%u, incoming=%u\n", this_id, node->id, node->depth, current_depth);
       return; // base case
     }
 
-    printf("[%d] node %d: depth=%u\n", this_id, node->id, node->depth);
+    // printf("[%d] node %d: depth=%u\n", this_id, node->id, node->depth);
 
     for (int i = 0; i < node->edge_count; i++) {
-      int edge_id = node->edge_arr[i];
-      Node& edge_node = prog.device.node_arr[edge_id];
+      int edge_node_id = prog.device.edge_arr[node->edge_offset + i];
+      Node& edge_node = prog.device.node_arr[edge_node_id];
+      // printf("offset=%llu, edge=%d\n", node->edge_offset, edge_node.id);
       prog.template async<MyProgramOp>(&edge_node, current_depth + 1);
     }
-    */
   }
 };
 
@@ -75,14 +75,11 @@ struct MyProgramSpec {
   // called by each work group if need work
   template <typename PROGRAM>
   __device__ static bool make_work(PROGRAM prog) {
-    /* TODO init traversal
     unsigned int index;
     if (prog.device.iterator->step(index)) {
-      prog.template async<MyProgramOp>(&prog.device.node_arr[0], 0);
+      prog.template async<MyProgramOp>(&prog.device.node_arr[prog.device.root_node], 0);
     }
-    */
-    Node node = prog.device.node_arr[28];
-    printf("%d\n", node.id);
+   
     return false;
   }
 };
@@ -94,17 +91,20 @@ int main(int argc, char *argv[]) {
 
   // arguments
   unsigned int batch_count = args["batch_count"] | 1;
-  std::cout << "group count: " << batch_count << std::endl;
+  // std::cout << "group count: " << batch_count << std::endl;
   unsigned int run_count = args["run_count"] | 1;
-  std::cout << "cycle count: " << run_count << std::endl;
+  // std::cout << "cycle count: " << run_count << std::endl;
   unsigned int arena_size = args["arena_size"] | 0x10000;
-  std::cout << "arena size: " << arena_size << std::endl;
+  // std::cout << "arena size: " << arena_size << std::endl;
   std::string file_str = args.get_flag_str("file");
-  std::cout << "parsing " << file_str << "..." << std::endl;
+  // std::cout << "parsing " << file_str << std::endl;
+  int root_node = args["root"];
+  bool directed = args["directed"];
 
   // init DeviceState
   MyDeviceState ds;
   ds.node_count = 0;
+  ds.root_node = root_node;
 
   iter::AtomicIter<unsigned int> host_iter(0, 1);
 	host::DevBuf<iter::AtomicIter<unsigned int>> iterator;
@@ -112,7 +112,7 @@ int main(int argc, char *argv[]) {
 	ds.iterator = iterator;
 
   std::vector<Node> nodes;
-  std::map<std::string, std::vector<int>> adjacency_graph;
+  std::map<int, std::vector<int>> adjacency_graph;
 
   std::ifstream file(file_str);
   if (!file.is_open()) {
@@ -134,41 +134,62 @@ int main(int argc, char *argv[]) {
       // parse node count
       getline(ss, token, ' ');
       ds.node_count = std::stoi(token) + 1;
-      nodes = std::vector<Node>(ds.node_count);
+      nodes = std::vector<Node>(ds.node_count, {
+        .edge_count = 0,
+        .edge_offset = 0,
+        .depth = 0xFFFFFFFF
+      });
+
+      for (size_t i = 0; i < nodes.size(); i++)
+      {
+        nodes.at(i).id = i;
+      }
     }
     else {
-      std::string token, node;
+      int node_id, edge;
+      std::string token;
       std::stringstream ss(line);
 
       // parse node
-      getline(ss, token, ' ');
-      node = token;
+      ss >> node_id;
 
       // parse edge
-      getline(ss, token, ' ');
-      adjacency_graph[node].push_back(std::stoi(token));
+      ss >> edge;
+      adjacency_graph[node_id].push_back(edge);
+      
+      if (!directed) {
+        adjacency_graph[edge].push_back(node_id);
+      }
     }
   }
 
   // finally close file
   file.close();
 
-  for(std::map<std::string, std::vector<int>>::iterator it = adjacency_graph.begin(); it != adjacency_graph.end(); it++) {
-    std::string id = it->first;
-    std::vector<int> edges = it->second;
-    
-    host::DevBuf<int> dev_edges(edges.size());
-    dev_edges << edges;
+  // single edge array
+  std::vector<int> edges;
+
+  for(std::map<int, std::vector<int>>::iterator it = adjacency_graph.begin(); it != adjacency_graph.end(); it++) {
+    size_t offset = edges.size(); // size before adding edges
+
+    for (auto &&edge : it->second)
+    {
+      edges.push_back(edge);
+      // std::cout << it->first << ", edge " << edge << std::endl;
+    }
 
     Node node = {
-      .id = std::stoi(id),
-      .edge_count = edges.size(),
-      .edge_arr = dev_edges,
-      .visited = 0,
+      .id = it->first,
+      .edge_count = it->second.size(),
+      .edge_offset = offset,
       .depth = 0xFFFFFFFF
     };
     nodes.at(node.id) = node;
   }
+
+  host::DevBuf<int> dev_edges(edges.size());
+  dev_edges << edges;
+  ds.edge_arr = dev_edges;
 
   host::DevBuf<Node> dev_nodes(ds.node_count);
   dev_nodes << nodes;
@@ -193,7 +214,7 @@ int main(int argc, char *argv[]) {
   do {
 			// Give the number of work groups and the size of the chunks pulled from
 			// the io buffer
-			exec<ProgType>(instance,batch_count,run_count);
+			exec<ProgType>(instance, batch_count, run_count);
 			cudaDeviceSynchronize();
 			host::check_error();
 		} while ( ! instance.complete() );
