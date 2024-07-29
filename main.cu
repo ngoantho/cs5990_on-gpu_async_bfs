@@ -1,11 +1,11 @@
 #include "harmonize.git/harmonize/cpp/harmonize.h"
-#include <iostream>
-#include <stdio.h>
-#include <vector>
-#include <string>
-#include <sstream>
 #include <fstream>
-#include <map> 
+#include <iostream>
+#include <map>
+#include <sstream>
+#include <stdio.h>
+#include <string>
+#include <vector>
 using namespace util;
 
 typedef struct {
@@ -22,29 +22,32 @@ struct MyDeviceState {
   int node_count;
   int* edge_arr;
   int root_node;
+  bool verbose;
   iter::AtomicIter<unsigned int>* iterator;
 };
 
 struct MyProgramOp {
-  using Type = void (*)(Node* node, unsigned int current_depth);
+  using Type = void (*)(Node* node, unsigned int current_depth, Node* parent);
 
   template <typename PROGRAM>
-  __device__ static void eval(PROGRAM prog, Node* node, unsigned int current_depth) {
-    // int this_id = blockIdx.x * blockDim.x + threadIdx.x;
+  __device__ static void eval(PROGRAM prog, Node *node, unsigned int current_depth, Node* parent) {
+    int this_id = blockIdx.x * blockDim.x + threadIdx.x;
+    unsigned int orig_depth = node->depth;
 
     // if this node is already visited, then skip it
     if (atomicMin(&node->depth, current_depth) <= current_depth) {
-      // printf("[%d] node %d visited already: depth=%u, incoming=%u\n", this_id, node->id, node->depth, current_depth);
       return; // base case
     }
 
-    // printf("[%d] node %d: depth=%u\n", this_id, node->id, node->depth);
+    if (prog.device.verbose) {
+      if (parent == nullptr) printf("[%d] node root->%d, depth %u->%u\n", this_id, node->id, orig_depth, node->depth);
+      else printf("[%d] node %d->%d, depth %u->%u\n", this_id, parent->id, node->id, orig_depth, node->depth);
+    }
 
     for (int i = 0; i < node->edge_count; i++) {
       int edge_node_id = prog.device.edge_arr[node->edge_offset + i];
       Node& edge_node = prog.device.node_arr[edge_node_id];
-      // printf("offset=%llu, edge=%d\n", node->edge_offset, edge_node.id);
-      prog.template async<MyProgramOp>(&edge_node, current_depth + 1);
+      prog.template async<MyProgramOp>(&edge_node, current_depth + 1, node);
     }
   }
 };
@@ -54,8 +57,8 @@ struct MyProgramSpec {
   typedef MyDeviceState DeviceState;
 
   static const size_t STASH_SIZE =   16;
-	static const size_t FRAME_SIZE = 8191;
-	static const size_t  POOL_SIZE = 8191;
+  static const size_t FRAME_SIZE = 8191;
+  static const size_t POOL_SIZE  = 8191;
 
   /*
     type PROGRAM {
@@ -65,21 +68,18 @@ struct MyProgramSpec {
   */
 
   // called by each work group at start
-  template <typename PROGRAM>
-  __device__ static void initialize(PROGRAM prog) {}
+  template <typename PROGRAM> __device__ static void initialize(PROGRAM prog) {}
 
   // called by each work group at end
-  template <typename PROGRAM>
-  __device__ static void finalize(PROGRAM prog) {}
+  template <typename PROGRAM> __device__ static void finalize(PROGRAM prog) {}
 
   // called by each work group if need work
-  template <typename PROGRAM>
-  __device__ static bool make_work(PROGRAM prog) {
+  template <typename PROGRAM> __device__ static bool make_work(PROGRAM prog) {
     unsigned int index;
     if (prog.device.iterator->step(index)) {
-      prog.template async<MyProgramOp>(&prog.device.node_arr[prog.device.root_node], 0);
+      prog.template async<MyProgramOp>(&prog.device.node_arr[prog.device.root_node], 0, nullptr);
     }
-   
+
     return false;
   }
 };
@@ -91,25 +91,30 @@ int main(int argc, char *argv[]) {
 
   // arguments
   unsigned int batch_count = args["batch_count"] | 1;
-  // std::cout << "group count: " << batch_count << std::endl;
   unsigned int run_count = args["run_count"] | 1;
-  // std::cout << "cycle count: " << run_count << std::endl;
   unsigned int arena_size = args["arena_size"] | 0x10000;
-  // std::cout << "arena size: " << arena_size << std::endl;
-  std::string file_str = args.get_flag_str("file");
-  // std::cout << "parsing " << file_str << std::endl;
-  int root_node = args["root"];
+  std::string file_str = args.get_flag_str((char *)"file");
+
+  // if flag is present, then true, else false
   bool directed = args["directed"];
 
   // init DeviceState
   MyDeviceState ds;
   ds.node_count = 0;
-  ds.root_node = root_node;
+  ds.root_node = args["root"]; // int
+  ds.verbose = args["verbose"]; // bool
+
+  if (ds.verbose) {
+    std::cout << "group count: " << batch_count << std::endl;
+    std::cout << "cycle count: " << run_count << std::endl;
+    std::cout << "arena size: " << arena_size << std::endl;
+    std::cout << "parsing " << file_str << std::endl;
+  }
 
   iter::AtomicIter<unsigned int> host_iter(0, 1);
-	host::DevBuf<iter::AtomicIter<unsigned int>> iterator;
-	iterator << host_iter;
-	ds.iterator = iterator;
+  host::DevBuf<iter::AtomicIter<unsigned int>> iterator;
+  iterator << host_iter;
+  ds.iterator = iterator;
 
   std::vector<Node> nodes;
   std::map<int, std::vector<int>> adjacency_graph;
@@ -126,26 +131,26 @@ int main(int argc, char *argv[]) {
     line_idx++;
     if (line.substr(0, 2) == "%%") {
       line_idx--; // trigger line_idx == 1
-    }
-    else if (line_idx == 1) {
+    } else if (line_idx == 1) {
       std::string token;
       std::stringstream ss(line);
 
       // parse node count
       getline(ss, token, ' ');
       ds.node_count = std::stoi(token) + 1;
-      nodes = std::vector<Node>(ds.node_count, {
-        .edge_count = 0,
-        .edge_offset = 0,
-        .depth = 0xFFFFFFFF
-      });
+      if (ds.verbose) {
+        std::cout << "loading " << token << " nodes" << std::endl;
+      }
 
-      for (size_t i = 0; i < nodes.size(); i++)
-      {
+      nodes = std::vector<Node>(
+        ds.node_count, // 
+        {.edge_count = 0, .edge_offset = 0, .depth = 0xFFFFFFFF}
+      );
+
+      for (size_t i = 0; i < nodes.size(); i++) {
         nodes.at(i).id = i;
       }
-    }
-    else {
+    } else {
       int node_id, edge;
       std::string token;
       std::stringstream ss(line);
@@ -156,7 +161,7 @@ int main(int argc, char *argv[]) {
       // parse edge
       ss >> edge;
       adjacency_graph[node_id].push_back(edge);
-      
+
       if (!directed) {
         adjacency_graph[edge].push_back(node_id);
       }
@@ -169,21 +174,17 @@ int main(int argc, char *argv[]) {
   // single edge array
   std::vector<int> edges;
 
-  for(std::map<int, std::vector<int>>::iterator it = adjacency_graph.begin(); it != adjacency_graph.end(); it++) {
+  for (std::map<int, std::vector<int>>::iterator it = adjacency_graph.begin(); it != adjacency_graph.end(); it++) {
     size_t offset = edges.size(); // size before adding edges
 
-    for (auto &&edge : it->second)
-    {
+    for (auto &&edge : it->second) {
       edges.push_back(edge);
-      // std::cout << it->first << ", edge " << edge << std::endl;
     }
 
-    Node node = {
-      .id = it->first,
-      .edge_count = it->second.size(),
-      .edge_offset = offset,
-      .depth = 0xFFFFFFFF
-    };
+    Node node = {.id = it->first,
+                 .edge_count = it->second.size(),
+                 .edge_offset = offset,
+                 .depth = 0xFFFFFFFF};
     nodes.at(node.id) = node;
   }
 
@@ -199,7 +200,7 @@ int main(int argc, char *argv[]) {
     std::cerr << "error: node count = 0" << std::endl;
     return 0;
   }
-  
+
   // declare program instance
   ProgType::Instance instance(arena_size, ds);
   cudaDeviceSynchronize();
@@ -212,10 +213,10 @@ int main(int argc, char *argv[]) {
 
   // exec program instance
   do {
-			// Give the number of work groups and the size of the chunks pulled from
-			// the io buffer
-			exec<ProgType>(instance, batch_count, run_count);
-			cudaDeviceSynchronize();
-			host::check_error();
-		} while ( ! instance.complete() );
+    // Give the number of work groups and the size of the chunks pulled from
+    // the io buffer
+    exec<ProgType>(instance, batch_count, run_count);
+    cudaDeviceSynchronize();
+    host::check_error();
+  } while (!instance.complete());
 }
