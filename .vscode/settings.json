@@ -1,5 +1,6 @@
 {
   "files.associations": {
-    "*.cpp": "cuda-cpp"
-  }
+    "*.cpp": "cuda-cpp",
+  },
+  "workbench.preferredDarkColorTheme": "Visual Studio Dark - C++"
 }
