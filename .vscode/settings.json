@@ -2,5 +2,6 @@
   "files.associations": {
     "*.cpp": "cuda-cpp",
   },
-  "workbench.preferredDarkColorTheme": "Visual Studio Dark - C++"
+  "workbench.preferredDarkColorTheme": "Visual Studio Dark - C++",
+  "window.autoDetectColorScheme": true
 }

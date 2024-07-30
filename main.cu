@@ -93,7 +93,12 @@ int main(int argc, char *argv[]) {
   unsigned int batch_count = args["batch_count"] | 1;
   unsigned int run_count = args["run_count"] | 1;
   unsigned int arena_size = args["arena_size"] | 0x10000;
-  std::string file_str = args.get_flag_str((char *)"file");
+
+  char* file_str = args.get_flag_str((char *)"file");
+  if (file_str == nullptr) {
+    std::cerr << "no value provided for -file" << std::endl;
+    std::exit(1);
+  }
 
   // if flag is present, then true, else false
   bool directed = args["directed"];
@@ -122,7 +127,7 @@ int main(int argc, char *argv[]) {
   std::ifstream file(file_str);
   if (!file.is_open()) {
     std::cerr << "unable to open " << file_str << std::endl;
-    return 1;
+    std::exit(1);
   }
 
   std::string line;
