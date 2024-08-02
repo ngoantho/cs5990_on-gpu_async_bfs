@@ -84,19 +84,27 @@ struct MyProgramSpec {
   }
 };
 
-using ProgType = AsyncProgram<MyProgramSpec>;
+using AsyncProgType = AsyncProgram<MyProgramSpec>;
+using EventProgType = EventProgram<MyProgramSpec>;
+// TODO function to generate program type
 
 int main(int argc, char *argv[]) {
   cli::ArgSet args(argc, argv);
 
   // arguments
-  unsigned int batch_count = args["batch_count"] | 1;
-  unsigned int run_count = args["run_count"] | 1;
-  unsigned int arena_size = args["arena_size"] | 0x10000;
+  unsigned int group_count = args["group_count"]; // batch count
+  unsigned int cycle_count = args["cycle_count"]; // run count
+  unsigned int arena_size = args["arena_size"] | 0x100000; // amount of memory to allocate
 
-  char* file_str = args.get_flag_str((char *)"file");
+  char* file_str = args.get_flag_str((char*)"file");
   if (file_str == nullptr) {
     std::cerr << "no value provided for -file" << std::endl;
+    std::exit(1);
+  }
+
+  char* program_type = args.get_flag_str((char*)"program");
+  if (program_type == nullptr) {
+    std::cerr << "no value provided for -program" << std::endl;
     std::exit(1);
   }
 
@@ -108,13 +116,6 @@ int main(int argc, char *argv[]) {
   ds.node_count = 0;
   ds.root_node = args["root"]; // int
   ds.verbose = args["verbose"]; // bool
-
-  if (ds.verbose) {
-    std::cout << "group count: " << batch_count << std::endl;
-    std::cout << "cycle count: " << run_count << std::endl;
-    std::cout << "arena size: " << arena_size << std::endl;
-    std::cout << "parsing " << file_str << std::endl;
-  }
 
   iter::AtomicIter<unsigned int> host_iter(0, 1);
   host::DevBuf<iter::AtomicIter<unsigned int>> iterator;
@@ -128,6 +129,8 @@ int main(int argc, char *argv[]) {
   if (!file.is_open()) {
     std::cerr << "unable to open " << file_str << std::endl;
     std::exit(1);
+  } else if (ds.verbose) {
+    std::cout << "parsing " << file_str << std::endl;
   }
 
   std::string line;
@@ -142,13 +145,13 @@ int main(int argc, char *argv[]) {
 
       // parse node count
       getline(ss, token, ' ');
-      ds.node_count = std::stoi(token) + 1;
+      ds.node_count = std::stoi(token) + 1; // need +1 for nodes n
       if (ds.verbose) {
         std::cout << "loading " << token << " nodes" << std::endl;
       }
 
       nodes = std::vector<Node>(
-        ds.node_count, // 
+        ds.node_count, // device buffer should have same number
         {.edge_count = 0, .edge_offset = 0, .depth = 0xFFFFFFFF}
       );
 
@@ -157,7 +160,6 @@ int main(int argc, char *argv[]) {
       }
     } else {
       int node_id, edge;
-      std::string token;
       std::stringstream ss(line);
 
       // parse node
@@ -206,22 +208,51 @@ int main(int argc, char *argv[]) {
     return 0;
   }
 
-  // declare program instance
-  ProgType::Instance instance(arena_size, ds);
-  cudaDeviceSynchronize();
-  host::check_error();
+  Stopwatch watch;
+  watch.start();
 
-  // init program instance
-  init<ProgType>(instance, 32);
-  cudaDeviceSynchronize();
-  host::check_error();
-
-  // exec program instance
-  do {
-    // Give the number of work groups and the size of the chunks pulled from
-    // the io buffer
-    exec<ProgType>(instance, batch_count, run_count);
+  // TODO simplify this
+  if (std::string(program_type) == "event") {
+      // declare program instance
+    EventProgType::Instance instance(arena_size, ds);
     cudaDeviceSynchronize();
     host::check_error();
-  } while (!instance.complete());
+
+    // init program instance
+    init<EventProgType>(instance, 32);
+    cudaDeviceSynchronize();
+    host::check_error();
+
+    // exec program instance
+    do {
+      // Give the number of work groups and the size of the chunks pulled from
+      // the io buffer
+      exec<EventProgType>(instance, group_count, cycle_count);
+      cudaDeviceSynchronize();
+      host::check_error();
+    } while (!instance.complete());
+  } else if (std::string(program_type) == "async") {
+      // declare program instance
+    AsyncProgType::Instance instance(arena_size, ds);
+    cudaDeviceSynchronize();
+    host::check_error();
+
+    // init program instance
+    init<AsyncProgType>(instance, 32);
+    cudaDeviceSynchronize();
+    host::check_error();
+
+    // exec program instance
+    do {
+      // Give the number of work groups and the size of the chunks pulled from
+      // the io buffer
+      exec<AsyncProgType>(instance, group_count, cycle_count);
+      cudaDeviceSynchronize();
+      host::check_error();
+    } while (!instance.complete());
+  }
+
+  watch.stop();
+  float msec = watch.ms_duration();
+  std::cout << "Runtime: " << msec << "ms" << std::endl;
 }
