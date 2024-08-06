@@ -12,7 +12,8 @@ typedef struct {
   int id;
   size_t edge_count;
   size_t edge_offset;
-  unsigned int depth; // compare depth of this node and incoming depth
+  unsigned int depth;
+  unsigned int visited;
 } Node;
 
 // state that will be stored per program instance and accessible by all work
@@ -31,18 +32,15 @@ struct MyProgramOp {
 
   template <typename PROGRAM>
   __device__ static void eval(PROGRAM prog, Node *node, unsigned int current_depth, Node* parent) {
-    int this_id = blockIdx.x * blockDim.x + threadIdx.x;
-    unsigned int orig_depth = node->depth;
+    // int this_id = blockIdx.x * blockDim.x + threadIdx.x;
 
     // if this node is already visited, then skip it
     if (atomicMin(&node->depth, current_depth) <= current_depth) {
       return; // base case
     }
 
-    if (prog.device.verbose) {
-      if (parent == nullptr) printf("[%d] node root->%d, depth %u->%u\n", this_id, node->id, orig_depth, node->depth);
-      else printf("[%d] node %d->%d, depth %u->%u\n", this_id, parent->id, node->id, orig_depth, node->depth);
-    }
+    // if visited is not 0, then set to 1
+    atomicCAS(&node->visited, 0, 1);
 
     for (int i = 0; i < node->edge_count; i++) {
       int edge_node_id = prog.device.edge_arr[node->edge_offset + i];
@@ -86,7 +84,26 @@ struct MyProgramSpec {
 
 using AsyncProgType = AsyncProgram<MyProgramSpec>;
 using EventProgType = EventProgram<MyProgramSpec>;
-// TODO function to generate program type
+
+template<typename ProgType, typename ProgTypeInstance>
+void run_kernel(MyDeviceState ds, unsigned int arena_size, unsigned int group_count, unsigned int cycle_count) {
+  ProgTypeInstance instance(arena_size, ds);
+  cudaDeviceSynchronize();
+  host::check_error();
+
+  // init program instance
+  init<ProgType>(instance, 32);
+  cudaDeviceSynchronize();
+  host::check_error();
+
+  // exec program instance
+  do {
+    // Give the number of work groups and the size of the chunks pulled from the io buffer
+    exec<ProgType>(instance, group_count, cycle_count);
+    cudaDeviceSynchronize();
+    host::check_error();
+  } while (!instance.complete());
+}
 
 int main(int argc, char *argv[]) {
   cli::ArgSet args(argc, argv);
@@ -152,7 +169,7 @@ int main(int argc, char *argv[]) {
 
       nodes = std::vector<Node>(
         ds.node_count, // device buffer should have same number
-        {.edge_count = 0, .edge_offset = 0, .depth = 0xFFFFFFFF}
+        {.edge_count = 0, .edge_offset = 0, .depth = 0xFFFFFFFF, .visited = 0}
       );
 
       for (size_t i = 0; i < nodes.size(); i++) {
@@ -191,7 +208,8 @@ int main(int argc, char *argv[]) {
     Node node = {.id = it->first,
                  .edge_count = it->second.size(),
                  .edge_offset = offset,
-                 .depth = 0xFFFFFFFF};
+                 .depth = 0xFFFFFFFF, 
+                 .visited = 0};
     nodes.at(node.id) = node;
   }
 
@@ -211,48 +229,15 @@ int main(int argc, char *argv[]) {
   Stopwatch watch;
   watch.start();
 
-  // TODO simplify this
-  if (std::string(program_type) == "event") {
-      // declare program instance
-    EventProgType::Instance instance(arena_size, ds);
-    cudaDeviceSynchronize();
-    host::check_error();
-
-    // init program instance
-    init<EventProgType>(instance, 32);
-    cudaDeviceSynchronize();
-    host::check_error();
-
-    // exec program instance
-    do {
-      // Give the number of work groups and the size of the chunks pulled from
-      // the io buffer
-      exec<EventProgType>(instance, group_count, cycle_count);
-      cudaDeviceSynchronize();
-      host::check_error();
-    } while (!instance.complete());
-  } else if (std::string(program_type) == "async") {
-      // declare program instance
-    AsyncProgType::Instance instance(arena_size, ds);
-    cudaDeviceSynchronize();
-    host::check_error();
-
-    // init program instance
-    init<AsyncProgType>(instance, 32);
-    cudaDeviceSynchronize();
-    host::check_error();
-
-    // exec program instance
-    do {
-      // Give the number of work groups and the size of the chunks pulled from
-      // the io buffer
-      exec<AsyncProgType>(instance, group_count, cycle_count);
-      cudaDeviceSynchronize();
-      host::check_error();
-    } while (!instance.complete());
+  if (std::string(program_type) == "async") {
+    run_kernel<AsyncProgType, AsyncProgType::Instance>(ds, arena_size, group_count, cycle_count);
+  } else if (std::string(program_type) == "event") {
+    run_kernel<EventProgType, EventProgType::Instance>(ds, arena_size, group_count, cycle_count);
   }
 
   watch.stop();
   float msec = watch.ms_duration();
   std::cout << "Runtime: " << msec << "ms" << std::endl;
+
+  
 }

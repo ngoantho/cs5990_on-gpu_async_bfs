@@ -1,2 +1,2 @@
-make main.exe
-./main.exe "$@"
+make "$1"
+./"$1" "$@"
