@@ -39,7 +39,7 @@ struct MyProgramOp {
       return; // base case
     }
 
-    // if visited is not 0, then set to 1
+    // use as baseline for CPU version
     atomicCAS(&node->visited, 0, 1);
 
     for (int i = 0; i < node->edge_count; i++) {
@@ -239,5 +239,11 @@ int main(int argc, char *argv[]) {
   float msec = watch.ms_duration();
   std::cout << "Runtime: " << msec << "ms" << std::endl;
 
-  
+  std::vector<Node> out_host(ds.node_count);
+  dev_nodes >> out_host;
+  host::check_error();
+
+  for (Node& node : out_host) {
+    std::cout << node.id << ", depth: " << node.depth << ", visited: " << node.visited << std::endl;
+  }
 }
