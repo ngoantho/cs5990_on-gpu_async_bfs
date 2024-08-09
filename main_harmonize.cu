@@ -1,4 +1,6 @@
 #include "harmonize.git/harmonize/cpp/harmonize.h"
+using namespace util;
+
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -6,15 +8,10 @@
 #include <stdio.h>
 #include <string>
 #include <vector>
-using namespace util;
 
-typedef struct {
-  int id;
-  size_t edge_count;
-  size_t edge_offset;
-  unsigned int depth;
-  unsigned int visited;
-} Node;
+#include "node.h"
+#include "adjacency_graph.h"
+#include "node_graph.h"
 
 // state that will be stored per program instance and accessible by all work
 // groups immutable, but can contain references and pointers to non-const data
@@ -23,7 +20,6 @@ struct MyDeviceState {
   int node_count;
   int* edge_arr;
   int root_node;
-  bool verbose;
   iter::AtomicIter<unsigned int>* iterator;
 };
 
@@ -130,101 +126,27 @@ int main(int argc, char *argv[]) {
 
   // init DeviceState
   MyDeviceState ds;
-  ds.node_count = 0;
   ds.root_node = args["root"]; // int
-  ds.verbose = args["verbose"]; // bool
 
   iter::AtomicIter<unsigned int> host_iter(0, 1);
   host::DevBuf<iter::AtomicIter<unsigned int>> iterator;
   iterator << host_iter;
   ds.iterator = iterator;
 
-  std::vector<Node> nodes;
-  std::map<int, std::vector<int>> adjacency_graph;
-
-  std::ifstream file(file_str);
-  if (!file.is_open()) {
-    std::cerr << "unable to open " << file_str << std::endl;
-    std::exit(1);
-  } else if (ds.verbose) {
-    std::cout << "parsing " << file_str << std::endl;
-  }
-
-  std::string line;
-  unsigned int line_idx = 0;
-  while (std::getline(file, line)) {
-    line_idx++;
-    if (line.substr(0, 2) == "%%") {
-      line_idx--; // trigger line_idx == 1
-    } else if (line_idx == 1) {
-      std::string token;
-      std::stringstream ss(line);
-
-      // parse node count
-      getline(ss, token, ' ');
-      ds.node_count = std::stoi(token) + 1; // need +1 for nodes n
-      if (ds.verbose) {
-        std::cout << "loading " << token << " nodes" << std::endl;
-      }
-
-      nodes = std::vector<Node>(
-        ds.node_count, // device buffer should have same number
-        {.edge_count = 0, .edge_offset = 0, .depth = 0xFFFFFFFF, .visited = 0}
-      );
-
-      for (size_t i = 0; i < nodes.size(); i++) {
-        nodes.at(i).id = i;
-      }
-    } else {
-      int node_id, edge;
-      std::stringstream ss(line);
-
-      // parse node
-      ss >> node_id;
-
-      // parse edge
-      ss >> edge;
-      adjacency_graph[node_id].push_back(edge);
-
-      if (!directed) {
-        adjacency_graph[edge].push_back(node_id);
-      }
-    }
-  }
-
-  // finally close file
-  file.close();
-
-  // single edge array
-  std::vector<int> edges;
-
-  for (std::map<int, std::vector<int>>::iterator it = adjacency_graph.begin(); it != adjacency_graph.end(); it++) {
-    size_t offset = edges.size(); // size before adding edges
-
-    for (auto &&edge : it->second) {
-      edges.push_back(edge);
-    }
-
-    Node node = {.id = it->first,
-                 .edge_count = it->second.size(),
-                 .edge_offset = offset,
-                 .depth = 0xFFFFFFFF, 
-                 .visited = 0};
-    nodes.at(node.id) = node;
-  }
-
-  host::DevBuf<int> dev_edges(edges.size());
-  dev_edges << edges;
-  ds.edge_arr = dev_edges;
-
-  host::DevBuf<Node> dev_nodes(ds.node_count);
-  dev_nodes << nodes;
-  ds.node_arr = dev_nodes;
-
+  AdjacencyGraph adjacency_graph(file_str, ds.node_count, directed);
+  NodeGraph node_graph(adjacency_graph.data, ds.node_count);
   if (ds.node_count == 0) {
     std::cerr << "error: node count = 0" << std::endl;
     return 0;
   }
+
+  host::DevBuf<int> dev_edges(node_graph.edges.size());
+  dev_edges << node_graph.edges;
+  ds.edge_arr = dev_edges;
+
+  host::DevBuf<Node> dev_nodes(ds.node_count);
+  dev_nodes << node_graph.nodes;
+  ds.node_arr = dev_nodes;
 
   Stopwatch watch;
   watch.start();
@@ -237,13 +159,8 @@ int main(int argc, char *argv[]) {
 
   watch.stop();
   float msec = watch.ms_duration();
-  std::cout << "Runtime: " << msec << "ms" << std::endl;
 
-  std::vector<Node> out_host(ds.node_count);
-  dev_nodes >> out_host;
-  host::check_error();
-
-  for (Node& node : out_host) {
-    std::cout << node.id << ", depth: " << node.depth << ", visited: " << node.visited << std::endl;
-  }
+  bool raw = args["raw"];
+  if (raw) std::cout << msec << std::endl;
+  else std::cout << "Runtime: " << msec << "ms" << std::endl;
 }

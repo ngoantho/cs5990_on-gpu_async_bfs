@@ -1,10 +1,10 @@
-all: main.exe graph.exe
+all: main_harmonize.exe main_queue.exe
 
 clean:
 	rm -f *.exe
 
-graph.exe: graph.cpp
-	nvcc -std=c++17 -o graph.exe graph.cpp
+main_queue.exe: main_queue.cpp
+	g++ -std=c++17 $(GCCFLAGS) -o main_queue.exe main_queue.cpp
 
-main.exe: main.cu
-	nvcc -std=c++17 -o main.exe main.cu
+main_harmonize.exe: main_harmonize.cu
+	nvcc -std=c++17 $(GCCFLAGS) -o main_harmonize.exe main_harmonize.cu
