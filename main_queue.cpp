@@ -31,13 +31,15 @@ int main(int argc, char *argv[]) {
   // modified during construction of the graphs
   int node_count;
 
-  int root_node = args["root"];
-
   AdjacencyGraph adjacency_graph(file_str, node_count, directed);
   NodeGraph node_graph(adjacency_graph.data, node_count);
 
+  int root_node_id = args["root"];
+  Node* root_node = &node_graph.nodes[root_node_id];
+
   std::queue<Node*> queue;
-  queue.push(&node_graph.nodes[root_node]);
+  root_node->depth = 0;
+  queue.push(root_node);
 
   auto start = high_resolution_clock::now();
 
@@ -51,6 +53,7 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < node->edge_count; i++) {
       int edge_node_id = node_graph.edges[node->edge_offset + i];
       Node& edge_node = node_graph.nodes[edge_node_id];
+      edge_node.depth = std::min(edge_node.depth, node->depth+1);
       queue.push(&edge_node);
     }
   }
@@ -61,4 +64,11 @@ int main(int argc, char *argv[]) {
   bool raw = args["raw"];
   if (raw) std::cout << ms.count() << std::endl;
   else std::cout << "Runtime: " << ms.count() << "ms" << std::endl;
+
+  bool verbose = args["verbose"];
+  if (verbose) {
+    for (auto &&i : node_graph.nodes) {
+      std::cout << i.id << ", depth: " << i.depth << ", visited: " << i.visited << std::endl;
+    }
+  }
 }
