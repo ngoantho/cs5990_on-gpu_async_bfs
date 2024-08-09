@@ -163,4 +163,13 @@ int main(int argc, char *argv[]) {
   bool raw = args["raw"];
   if (raw) std::cout << msec << std::endl;
   else std::cout << "Runtime: " << msec << "ms" << std::endl;
+
+  bool verbose = args["verbose"];
+  if (verbose) {
+    std::vector<Node> out_host;
+    dev_nodes >> out_host;
+    for (auto &&i : out_host) {
+      std::cout << i.id << ", depth: " << i.depth << ", visited: " << i.visited << std::endl;
+    }
+  }
 }
