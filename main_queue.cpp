@@ -1,11 +1,3 @@
-#include <cstdio>
-#include <cstring>
-#include <cstdlib>
-#include <cstddef>
-#include <cmath>
-#include "harmonize.git/harmonize/cpp/util/cli.h"
-using namespace util;
-
 #include <iostream>
 #include <fstream>
 #include <queue>
@@ -15,8 +7,9 @@ using namespace std::chrono;
 
 #include "adjacency_graph.h"
 #include "node_graph.h"
+#include "common.h"
 
-int main(int argc, char *argv[]) {
+int main_queue(int argc, char *argv[]) {
   cli::ArgSet args(argc, argv);
 
   char* file_str = args.get_flag_str((char*)"file");
@@ -61,14 +54,14 @@ int main(int argc, char *argv[]) {
   auto stop = high_resolution_clock::now();
   duration<float, std::milli> ms = stop - start;
 
-  bool raw = args["raw"];
-  if (raw) std::cout << ms.count() << std::endl;
-  else std::cout << "Runtime: " << ms.count() << "ms" << std::endl;
+  // normalize output format
+  common_output(args, ms.count(), node_graph.nodes, "queue");
 
-  bool verbose = args["verbose"];
-  if (verbose) {
-    for (auto &&i : node_graph.nodes) {
-      std::cout << i.id << ", depth: " << i.depth << ", visited: " << i.visited << std::endl;
-    }
-  }
+  return 0;
 }
+
+#ifndef MAIN
+int main(int argc, char* argv[]) {
+  return main_queue(argc, argv);
+}
+#endif

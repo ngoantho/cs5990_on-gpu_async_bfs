@@ -12,6 +12,7 @@ using namespace util;
 #include "node.h"
 #include "adjacency_graph.h"
 #include "node_graph.h"
+#include "common.h"
 
 // state that will be stored per program instance and accessible by all work
 // groups immutable, but can contain references and pointers to non-const data
@@ -101,7 +102,7 @@ void run_kernel(MyDeviceState ds, unsigned int arena_size, unsigned int group_co
   } while (!instance.complete());
 }
 
-int main(int argc, char *argv[]) {
+int main_harmonize(int argc, char *argv[]) {
   cli::ArgSet args(argc, argv);
 
   // arguments
@@ -160,16 +161,15 @@ int main(int argc, char *argv[]) {
   watch.stop();
   float msec = watch.ms_duration();
 
-  bool raw = args["raw"];
-  if (raw) std::cout << msec << std::endl;
-  else std::cout << "Runtime: " << msec << "ms" << std::endl;
+  std::vector<Node> out_host;
+  dev_nodes >> out_host;
+  common_output(args, msec, out_host, "harmonize");
 
-  bool verbose = args["verbose"];
-  if (verbose) {
-    std::vector<Node> out_host;
-    dev_nodes >> out_host;
-    for (auto &&i : out_host) {
-      std::cout << i.id << ", depth: " << i.depth << ", visited: " << i.visited << std::endl;
-    }
-  }
+  return 0;
 }
+
+#ifndef MAIN
+int main(int argc, char *argv[]) {
+  return main_harmonize(argc, argv);
+}
+#endif
