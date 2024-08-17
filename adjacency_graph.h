@@ -9,16 +9,52 @@
 #include <string>
 #include <vector>
 
+#include <filesystem>
+namespace fs = std::filesystem;
+
 struct AdjacencyGraph {
   std::map<int, std::vector<int>> data;
+  std::ifstream file;
+  fs::path path;
+  int &node_count;
+  bool directed;
 
-  AdjacencyGraph(char* file_str, int& node_count, bool directed): data() {
-    std::ifstream file(file_str);
+  AdjacencyGraph(char *_file_str, int &_node_count, bool _directed, bool parse_file=true)
+      : data(), file(_file_str), path(_file_str), node_count(_node_count),
+        directed(_directed) {
     if (!file.is_open()) {
-      std::cerr << "unable to open " << file_str << std::endl;
+      std::cerr << "unable to open " << path << std::endl;
       std::exit(1);
     }
 
+    if (parse_file) {
+      handle_extension(path.extension());
+      file.close();
+    }
+  }
+
+  void handle_parsing(const char *comments, bool skip_first_line, char delimiter, bool verbose=false) {
+    std::string line;
+    unsigned int line_idx = 0;
+    bool skipped_no_comments = false, skipped_first_line = false;
+    while (std::getline(file, line)) {
+      line_idx++;
+      if (comments == nullptr && !skipped_no_comments) {
+        if (verbose) std::cout << "skipping no comments" << std::endl;
+        skipped_no_comments = true;
+      } else if (comments != nullptr && line.find(comments) != std::string::npos) {
+        if (verbose) std::cout << "skipping " << line << std::endl;
+        continue;
+      } else if (skip_first_line && !skipped_first_line) {
+        if (verbose) std::cout << "skipping first line" << std::endl;
+        skipped_first_line = true;
+      } else {
+        break;
+      }
+    }
+  }
+
+  void handle_mtx() {
     std::string line;
     unsigned int line_idx = 0;
     while (std::getline(file, line)) {
@@ -48,9 +84,16 @@ struct AdjacencyGraph {
         }
       }
     }
+  }
 
-    // finally close file
-    file.close();
+  void handle_extension(fs::path extension) {
+    std::cout << "detected extension: " << extension << std::endl;
+    if (extension == ".mtx") {
+      handle_parsing("%%", true, ' ');
+    } else {
+      std::cerr << "unknown extension: " << extension << std::endl;
+      std::exit(1);
+    }
   }
 };
 

@@ -1,18 +1,11 @@
 #ifndef COMMON
 #define COMMON
 
-#include <cstdio>
-#include <cstring>
-#include <cstdlib>
-#include <cstddef>
-#include <cmath>
-#include "harmonize.git/harmonize/cpp/util/cli.h"
-using namespace util;
-
 #include <vector>
 #include <string>
 #include <iostream>
 #include "node.h"
+#include "cli_argset.h"
 
 void common_output(cli::ArgSet& args, float runtime, std::vector<Node>& nodes, std::string type) {
   const char* output = args.get_flag_str((char*)"output");
@@ -35,6 +28,7 @@ void common_output(cli::ArgSet& args, float runtime, std::vector<Node>& nodes, s
     std::cout << "writing to: " << filename << std::endl;
     std::ofstream file(filename);
     common_for(file); // ios_base <- ios <- ostream <- ofstream
+    file.close();
   } else {
     std::cerr << "unknown output value: " << std::string(output) << std::endl;
     std::exit(1);

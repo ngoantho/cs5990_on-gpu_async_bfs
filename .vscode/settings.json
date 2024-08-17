@@ -1,6 +1,8 @@
 {
   "files.associations": {
     "*.cpp": "cuda-cpp",
+    "iosfwd": "cpp",
+    "fstream": "cpp"
   },
   "workbench.preferredDarkColorTheme": "Visual Studio Dark - C++",
   "window.autoDetectColorScheme": true
