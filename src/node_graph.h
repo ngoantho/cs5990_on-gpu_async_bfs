@@ -38,7 +38,6 @@ struct NodeGraph {
         edges.push_back(edge);
       }
 
-      std::cout << "node " << it->first << std::endl;
       nodes.at(it->first).edge_count = it->second.size();
       nodes.at(it->first).edge_offset = offset;
     }
