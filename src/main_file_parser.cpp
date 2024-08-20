@@ -28,10 +28,7 @@ int main(int argc, char* argv[]) {
   std::map<int, std::vector<int>> graph = file_parser.parse_file(file_str, directed, true);
   std::cout << "graph size: " << graph.size() << std::endl;
 
-  bool print = args["print"];
-  if (print) {
-    for (auto &&i : graph) {
-      std::cout << i.first << ": " << vec_to_string(i.second) << std::endl;
-    }
+  for (auto &&i : graph) {
+    std::cout << i.first << ": " << vec_to_string(i.second) << std::endl;
   }
 }
