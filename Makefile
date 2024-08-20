@@ -1,16 +1,16 @@
-all: main.exe
+all: file_parser.exe queue.exe harmonize.exe main.exe
 
 clean:
 	rm -f *.exe
 
-queue.exe: main_queue.cpp
-	g++ -std=c++17 -o queue.exe main_queue.cpp
+queue.exe: src/main_queue.cpp
+	g++ -std=c++17 -o queue.exe src/main_queue.cpp
 
-harmonize.exe: main_harmonize.cu
-	nvcc -std=c++17 -lineinfo -o harmonize.exe main_harmonize.cu
+harmonize.exe: src/main_harmonize.cu
+	nvcc -std=c++17 -lineinfo -o harmonize.exe src/main_harmonize.cu
 
-adjacency_graph.exe: adjacency_graph.h main_adjacency_graph.cpp
-	g++ -std=c++17 -o adjacency_graph.exe main_adjacency_graph.cpp
+file_parser.exe: src/file_parser.h src/main_file_parser.cpp
+	g++ -std=c++17 -o file_parser.exe src/main_file_parser.cpp
 
-main.exe: main_queue.cpp main_harmonize.cu main.cpp
-	nvcc -x cu -std=c++17 -lineinfo -o main.exe main.cpp
+main.exe: src/main_queue.cpp src/main_harmonize.cu src/main.cpp
+	nvcc -x cu -std=c++17 -lineinfo -o main.exe src/main.cpp
