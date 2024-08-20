@@ -17,6 +17,7 @@ std::string vec_to_string(std::vector<int>& vec) {
 
 int main(int argc, char* argv[]) {
   cli::ArgSet args(argc, argv);
+  bool directed = args["directed"];
   char* file_str = args.get_flag_str((char*)"file");
   
   FileParser file_parser;
@@ -24,7 +25,7 @@ int main(int argc, char* argv[]) {
   // else file_parser.parse_arguments(args);
   file_parser.parse_arguments(args);
 
-  std::map<int, std::vector<int>> graph = file_parser.parse_file(file_str, true);
+  std::map<int, std::vector<int>> graph = file_parser.parse_file(file_str, directed, true);
   std::cout << "graph size: " << graph.size() << std::endl;
 
   bool print = args["print"];

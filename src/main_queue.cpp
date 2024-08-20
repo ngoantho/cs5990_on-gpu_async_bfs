@@ -11,6 +11,7 @@ using namespace std::chrono;
 
 int main_queue(int argc, char *argv[]) {
   cli::ArgSet args(argc, argv);
+  bool directed = args["directed"];
 
   char* file_str = args.get_flag_str((char*)"file");
   if (file_str == nullptr) {
@@ -27,7 +28,7 @@ int main_queue(int argc, char *argv[]) {
   else
     file_parser.parse_arguments(args);
   
-  std::map<int, std::vector<int>>& adjacency_graph = file_parser.parse_file(file_str);
+  std::map<int, std::vector<int>>& adjacency_graph = file_parser.parse_file(file_str, directed);
   node_count = file_parser.node_count;
   NodeGraph node_graph(adjacency_graph, node_count);
 
