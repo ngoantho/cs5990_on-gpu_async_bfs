@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string>
 #include <vector>
+#include <algorithm>
 
 #include <filesystem>
 namespace fs = std::filesystem;
@@ -20,6 +21,7 @@ bool string_contains(std::string str, std::string sub) {
 
 struct FileParser {
   std::map<int, std::vector<int>> adjacency_graph;
+  std::vector<int> graph_keys;
   int node_count;
 
   const char* comments;
@@ -78,7 +80,7 @@ struct FileParser {
     } else if (verbose) std::cout << "delimiter: " << delimiter << std::endl;
   }
 
-  std::map<int, std::vector<int>>& parse_file(char* file_str, bool verbose=false) {
+  std::map<int, std::vector<int>>& parse_file(char* file_str, bool directed, bool verbose=false) {
     std::ifstream file(file_str);
     if (!file.is_open()) {
       std::cerr << "unable to open " << file_str << std::endl;
@@ -110,12 +112,16 @@ struct FileParser {
         getline(ss, token, *delimiter);
         edge = std::stoi(token);
 
+        graph_keys.push_back(node);
         adjacency_graph[node].push_back(edge);
-        adjacency_graph[edge].push_back(node);
+        
+        // directed graphs point in one direction
+        if (!directed) adjacency_graph[edge].push_back(node);
       }
     }
 
     file.close();
+    node_count = *std::max_element(graph_keys.begin(), graph_keys.end());
     return adjacency_graph;
   }
 };

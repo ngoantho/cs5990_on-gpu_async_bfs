@@ -104,6 +104,7 @@ void run_kernel(MyDeviceState ds, unsigned int arena_size, unsigned int group_co
 
 int main_harmonize(int argc, char *argv[]) {
   cli::ArgSet args(argc, argv);
+  bool directed = args["directed"];
 
   // arguments
   unsigned int group_count = args["group_count"]; // batch count
@@ -137,7 +138,7 @@ int main_harmonize(int argc, char *argv[]) {
   else
     file_parser.parse_arguments(args);
 
-  std::map<int, std::vector<int>>& adjacency_graph = file_parser.parse_file(file_str);
+  std::map<int, std::vector<int>>& adjacency_graph = file_parser.parse_file(file_str, directed);
   ds.node_count = file_parser.node_count;
   NodeGraph node_graph(adjacency_graph, ds.node_count);
 
