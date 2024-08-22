@@ -14,16 +14,14 @@ struct NodeGraph {
   std::vector<Node> nodes;
   std::vector<int> edges;
 
-  NodeGraph(std::map<int, std::vector<int>>& adjacency_graph, int node_count): nodes(node_count+1), edges(node_count+1) {
-    // Node zero;
-    // zero.id = 0;
-    // zero.depth = 0xFFFFFFFF;
-    // zero.visited = 0;
-    // zero.edge_count = 0;
-    // zero.edge_offset = 0;
-    // nodes.push_back(zero);
+  NodeGraph(std::map<int, std::vector<int>>& adjacency_graph) {
+    // map keys are sorted ascendingly by default
+    int node_count = adjacency_graph.rbegin()->first + 1;
+    
+    nodes = std::vector<Node>(node_count);
+    edges = std::vector<int>(node_count);
 
-    for (int i = 0; i < node_count+1; i++) {
+    for (int i = 0; i < node_count; i++) {
       Node node;
       node.id = i;
       node.depth = 0xFFFFFFFF;
