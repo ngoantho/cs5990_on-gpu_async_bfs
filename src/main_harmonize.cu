@@ -106,9 +106,9 @@ int main_harmonize(int argc, char *argv[]) {
   bool directed = args["directed"];
 
   // arguments
-  unsigned int group_count = args["group_count"]; // batch count
-  unsigned int cycle_count = args["cycle_count"]; // run count
-  unsigned int arena_size = args["arena_size"] | 0x100000; // amount of memory to allocate
+  unsigned int group_count = args["group_count"] | args["group-count"]; // batch count
+  unsigned int cycle_count = args["cycle_count"] | args["cycle-count"]; // run count
+  unsigned int arena_size = args["arena_size"] | args["arena-size"] | 0x100000; // amount of memory to allocate
 
   char* file_str = args.get_flag_str((char*)"file");
   if (file_str == nullptr) {
