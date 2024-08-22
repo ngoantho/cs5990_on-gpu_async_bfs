@@ -14,20 +14,11 @@ using namespace util;
 #include "node_graph.h"
 #include "common.h"
 
-// state that will be stored per program instance and accessible by all work
-// groups immutable, but can contain references and pointers to non-const data
-struct MyDeviceState {
-  Node* node_arr;
-  int* edge_arr;
-  int root_node;
-  iter::AtomicIter<unsigned int>* iterator;
-};
-
 struct BFSProgramOp {
-  using Type = void (*)(Node* node, unsigned int current_depth, Node* parent);
+  using Type = void (*)(Node* node, unsigned int current_depth);
 
   template <typename PROGRAM>
-  __device__ static void eval(PROGRAM prog, Node *node, unsigned int current_depth, Node* parent) {
+  __device__ static void eval(PROGRAM prog, Node *node, unsigned int current_depth) {
     // int this_id = blockIdx.x * blockDim.x + threadIdx.x;
 
     // if this node is already visited, then skip it
@@ -41,9 +32,19 @@ struct BFSProgramOp {
     for (int i = 0; i < node->edge_count; i++) {
       int edge_node_id = prog.device.edge_arr[node->edge_offset + i];
       Node& edge_node = prog.device.node_arr[edge_node_id];
-      prog.template async<BFSProgramOp>(&edge_node, current_depth + 1, node);
+      prog.template async<BFSProgramOp>(&edge_node, current_depth + 1);
     }
   }
+};
+
+// The device state, itself, is an immutable struct, but can contain references
+// and pointers to non-const data.
+struct MyDeviceState {
+  Node* node_arr;
+  int* edge_arr;
+  int root_node;
+  unsigned int depth;
+  iter::AtomicIter<unsigned int>* iterator;
 };
 
 struct BFSProgramSpec {
@@ -71,7 +72,7 @@ struct BFSProgramSpec {
   template <typename PROGRAM> __device__ static bool make_work(PROGRAM prog) {
     unsigned int index;
     if (prog.device.iterator->step(index)) {
-      prog.template async<BFSProgramOp>(&prog.device.node_arr[prog.device.root_node], 0, nullptr);
+      prog.template async<BFSProgramOp>(&prog.device.node_arr[prog.device.root_node], 0);
     }
 
     return false;
@@ -124,6 +125,7 @@ int main_harmonize(int argc, char *argv[]) {
 
   // init DeviceState
   MyDeviceState ds;
+  ds.depth = 0; // unsigned int
   ds.root_node = args["root"]; // int
 
   iter::AtomicIter<unsigned int> host_iter(0, 1);
