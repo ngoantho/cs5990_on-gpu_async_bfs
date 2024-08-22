@@ -19,9 +19,6 @@ int main_queue(int argc, char *argv[]) {
     std::exit(1);
   }
 
-  // modified during construction of the graphs
-  int node_count;
-
   FileParser file_parser;
   if (file_parser.known_extension(file_str))
     file_parser.parse_extension(file_str);
@@ -29,8 +26,7 @@ int main_queue(int argc, char *argv[]) {
     file_parser.parse_arguments(args);
   
   std::map<int, std::vector<int>>& adjacency_graph = file_parser.parse_file(file_str, directed);
-  node_count = file_parser.node_count;
-  NodeGraph node_graph(adjacency_graph, node_count);
+  NodeGraph node_graph(adjacency_graph);
 
   int root_node_id = args["root"];
   Node* root_node = &node_graph.nodes[root_node_id];

@@ -18,7 +18,6 @@ using namespace util;
 // groups immutable, but can contain references and pointers to non-const data
 struct MyDeviceState {
   Node* node_arr;
-  int node_count;
   int* edge_arr;
   int root_node;
   iter::AtomicIter<unsigned int>* iterator;
@@ -139,14 +138,13 @@ int main_harmonize(int argc, char *argv[]) {
     file_parser.parse_arguments(args);
 
   std::map<int, std::vector<int>>& adjacency_graph = file_parser.parse_file(file_str, directed);
-  ds.node_count = file_parser.node_count;
-  NodeGraph node_graph(adjacency_graph, ds.node_count);
+  NodeGraph node_graph(adjacency_graph);
 
   host::DevBuf<int> dev_edges(node_graph.edges.size());
   dev_edges << node_graph.edges;
   ds.edge_arr = dev_edges;
 
-  host::DevBuf<Node> dev_nodes(ds.node_count);
+  host::DevBuf<Node> dev_nodes(node_graph.nodes.size());
   dev_nodes << node_graph.nodes;
   ds.node_arr = dev_nodes;
 
