@@ -31,19 +31,47 @@ struct MyProgramOp {
     // int this_id = blockIdx.x * blockDim.x + threadIdx.x;
 
     // if this node is already visited, then skip it
-    if (atomicMin(&node->depth, current_depth) <= current_depth) {
-      return; // base case
-    }
 
     // use as baseline for CPU version
     atomicCAS(&node->visited, 0, 1);
 
+
+    // Simpler version, without loop coalescing
+    /*
     for (int i = 0; i < node->edge_count; i++) {
-      int edge_node_id = prog.device.edge_arr[node->edge_offset + i];
+
+      unsigned int edge_node_id = prog.device.edge_arr[node->edge_offset + i];
       Node& edge_node = prog.device.node_arr[edge_node_id];
-      prog.template async<MyProgramOp>(&edge_node, current_depth + 1, node);
+
+      if (atomicMin(&edge_node.depth, current_depth+1) > current_depth+1) {
+        prog.template async<MyProgramOp>(&edge_node, current_depth + 1, node);
+      }
     }
+    */
+
+    //*
+    for (int i = 0; i < node->edge_count; i++) {
+      int edge_node_id;
+      bool hit = false;
+      while ( (!hit) && (i < node->edge_count) ){
+        edge_node_id = prog.device.edge_arr[node->edge_offset + i];
+        Node& edge_node = prog.device.node_arr[edge_node_id];
+        if (atomicMin(&edge_node.depth, current_depth+1) > current_depth+1) {
+          hit = true;
+          break;
+        }
+        i++;
+      }
+      if ( hit ) {
+        Node& edge_node = prog.device.node_arr[edge_node_id];
+        prog.template async<MyProgramOp>(&edge_node, current_depth + 1, node);
+      }
+    }
+    //*/
+
   }
+
+
 };
 
 struct MyProgramSpec {
@@ -70,8 +98,11 @@ struct MyProgramSpec {
   // called by each work group if need work
   template <typename PROGRAM> __device__ static bool make_work(PROGRAM prog) {
     unsigned int index;
+
     if (prog.device.iterator->step(index)) {
-      prog.template async<MyProgramOp>(&prog.device.node_arr[prog.device.root_node], 0, nullptr);
+      Node &root = prog.device.node_arr[prog.device.root_node];
+      atomicMin(&root.depth,0);
+      prog.template async<MyProgramOp>(&root, 0, nullptr);
     }
 
     return false;
@@ -163,4 +194,11 @@ int main(int argc, char *argv[]) {
   bool raw = args["raw"];
   if (raw) std::cout << msec << std::endl;
   else std::cout << "Runtime: " << msec << "ms" << std::endl;
+
+  std::vector<Node> output;
+  dev_nodes >> output;
+  for (Node& node : output) {
+    std::cout << node.id << "\t" << node.depth << std::endl;
+  }
+
 }
