@@ -19,8 +19,6 @@ struct BFSProgramOp {
 
   template <typename PROGRAM>
   __device__ static void eval(PROGRAM prog, Node *node, unsigned int current_depth) {
-    // int this_id = blockIdx.x * blockDim.x + threadIdx.x;
-
     // if this node is already visited, then skip it
     if (atomicMin(&node->depth, current_depth) <= current_depth) {
       return; // base case
@@ -43,7 +41,6 @@ struct MyDeviceState {
   Node* node_arr;
   int* edge_arr;
   int root_node;
-  unsigned int depth;
   iter::AtomicIter<unsigned int>* iterator;
 };
 
@@ -70,12 +67,23 @@ struct BFSProgramSpec {
 
   // called by each work group if need work
   template <typename PROGRAM> __device__ static bool make_work(PROGRAM prog) {
-    unsigned int index;
-    if (prog.device.iterator->step(index)) {
-      prog.template async<BFSProgramOp>(&prog.device.node_arr[prog.device.root_node], 0);
+    // must be accessed through array, copying into device memory not working
+    Node& root_node = prog.device.node_arr[prog.device.root_node];
+
+    // set root node depth to 0
+    if (atomicMin(&root_node.depth, 0) <= 0) {
+      return false;
     }
 
-    return false;
+    // use as baseline for CPU version
+    atomicCAS(&root_node.visited, 0, 1);
+
+    for (int i = 0; i < root_node.edge_count; i++) {
+      int edge_node_id = prog.device.edge_arr[root_node.edge_offset+i];
+      Node& edge_node = prog.device.node_arr[edge_node_id];
+      prog.template async<BFSProgramOp>(&edge_node, 1);
+    }
+    return true;
   }
 };
 
@@ -107,9 +115,9 @@ int main_harmonize(int argc, char *argv[]) {
   bool directed = args["directed"];
 
   // arguments
-  unsigned int group_count = args["group_count"] | args["group-count"]; // batch count
-  unsigned int cycle_count = args["cycle_count"] | args["cycle-count"]; // run count
-  unsigned int arena_size = args["arena_size"] | args["arena-size"] | 0x100000; // amount of memory to allocate
+  unsigned int group_count = args["group_count"] | 1u; // batch count
+  unsigned int cycle_count = args["cycle_count"] | 1u; // run count
+  unsigned int arena_size = args["arena_size"] | 0x100000u; // amount of memory to allocate
 
   char* file_str = args.get_flag_str((char*)"file");
   if (file_str == nullptr) {
@@ -125,7 +133,6 @@ int main_harmonize(int argc, char *argv[]) {
 
   // init DeviceState
   MyDeviceState ds;
-  ds.depth = 0; // unsigned int
   ds.root_node = args["root"]; // int
 
   iter::AtomicIter<unsigned int> host_iter(0, 1);
