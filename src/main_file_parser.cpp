@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
   // file_parser.parse_arguments(args);
   file_parser.parse_arguments(args);
 
-  std::map<int, std::vector<int>>& graph = file_parser.parse_file(file_str, directed, true);
+  std::map<int, std::vector<int>>& graph = file_parser.parse_file(file_str, directed);
 
   std::cout << "max node - graph.rbegin: " << graph.rbegin()->first << std::endl;
   std::cout << "max node - max element: " << max_key(graph) << std::endl;
