@@ -14,7 +14,7 @@ struct NodeGraph {
   std::vector<Node> nodes;
   std::vector<int> edges;
 
-  NodeGraph(std::map<int, std::vector<int>>& adjacency_graph) {
+  NodeGraph(std::map<int, std::vector<int>>& adjacency_graph, bool verbose=false) {
     // map keys are sorted ascendingly by default
     int node_count = adjacency_graph.rbegin()->first + 1;
     
@@ -22,12 +22,7 @@ struct NodeGraph {
     edges = std::vector<int>(node_count);
 
     for (int i = 0; i < node_count; i++) {
-      Node node;
-      node.id = i;
-      node.depth = 0xFFFFFFFF;
-      node.visited = 0;
-      node.edge_count = 0;
-      nodes.at(i) = node;
+      nodes.at(i) = Node(i);
     }
 
     for (std::map<int, std::vector<int>>::iterator it = adjacency_graph.begin(); it != adjacency_graph.end(); it++) {
@@ -39,6 +34,16 @@ struct NodeGraph {
 
       nodes.at(it->first).edge_count = it->second.size();
       nodes.at(it->first).edge_offset = offset;
+    }
+
+    int max_edge = *std::max_element(edges.begin(), edges.end());
+    if (max_edge > node_count) {
+      nodes.resize(max_edge + 1); // edges may reference nodes not added yet
+
+      int diff = max_edge - node_count;
+      for (int i = 1; i <= diff; i++) {
+        nodes.at(node_count + i) = Node(node_count + i);
+      }
     }
   }
 };
