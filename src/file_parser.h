@@ -21,15 +21,14 @@ bool string_contains(std::string str, std::string sub) {
 
 struct FileParser {
   std::map<int, std::vector<int>> adjacency_graph;
-  std::vector<int> graph_keys;
-  int node_count;
+  bool verbose;
 
   const char* comments;
   bool skip_first_line;
   const char* delimiter;
 
-  FileParser()
-      : adjacency_graph(), node_count(0),
+  FileParser(bool _verbose=false)
+      : adjacency_graph(), verbose(_verbose),
         comments(nullptr), skip_first_line(false), delimiter(nullptr) 
   {}
 
@@ -60,7 +59,7 @@ struct FileParser {
     }
   }
 
-  void parse_arguments(cli::ArgSet& args, bool verbose=false) {
+  void parse_arguments(cli::ArgSet& args) {
     comments = args.get_flag_str((char*)"comment");
     if (verbose && comments != nullptr) std::cout << "comment: " << comments << std::endl;
     else if (verbose && comments == nullptr) std::cout << "comment: null" << std::endl;
@@ -80,7 +79,7 @@ struct FileParser {
     } else if (verbose) std::cout << "delimiter: " << delimiter << std::endl;
   }
 
-  std::map<int, std::vector<int>>& parse_file(char* file_str, bool directed, bool verbose=false) {
+  std::map<int, std::vector<int>>& parse_file(char* file_str, bool directed) {
     std::ifstream file(file_str);
     if (!file.is_open()) {
       std::cerr << "unable to open " << file_str << std::endl;
@@ -112,7 +111,6 @@ struct FileParser {
         getline(ss, token, *delimiter);
         edge = std::stoi(token);
 
-        graph_keys.push_back(node);
         adjacency_graph[node].push_back(edge);
         
         // directed graphs point in one direction
@@ -121,7 +119,6 @@ struct FileParser {
     }
 
     file.close();
-    node_count = *std::max_element(graph_keys.begin(), graph_keys.end());
     return adjacency_graph;
   }
 };
