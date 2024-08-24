@@ -19,10 +19,6 @@ struct BFSProgramOp {
 
   template <typename PROGRAM>
   __device__ static void eval(PROGRAM prog, Node *node, unsigned int current_depth) {
-    // int this_id = blockIdx.x * blockDim.x + threadIdx.x;
-
-    // if this node is already visited, then skip it
-
     // use as baseline for CPU version
     atomicCAS(&node->visited, 0, 1);
 
@@ -33,18 +29,14 @@ struct BFSProgramOp {
 
       unsigned int edge_node_id = prog.device.edge_arr[node->edge_offset + i];
       Node& edge_node = prog.device.node_arr[edge_node_id];
-<<<<<<<< HEAD:src/main_harmonize.cu
-      prog.template async<BFSProgramOp>(&edge_node, current_depth + 1);
-========
 
       if (atomicMin(&edge_node.depth, current_depth+1) > current_depth+1) {
-        prog.template async<MyProgramOp>(&edge_node, current_depth + 1, node);
+        prog.template async<BFSProgramOp>(&edge_node, current_depth + 1, node);
       }
->>>>>>>> braxtoncuneo-loop-revision:main_harmonize.cu
     }
     */
 
-    //*
+    //* with loop coalescing
     for (int i = 0; i < node->edge_count; i++) {
       int edge_node_id;
       bool hit = false;
@@ -59,7 +51,7 @@ struct BFSProgramOp {
       }
       if ( hit ) {
         Node& edge_node = prog.device.node_arr[edge_node_id];
-        prog.template async<MyProgramOp>(&edge_node, current_depth + 1, node);
+        prog.template async<BFSProgramOp>(&edge_node, current_depth + 1);
       }
     }
     //*/
@@ -75,7 +67,6 @@ struct MyDeviceState {
   Node* node_arr;
   int* edge_arr;
   int root_node;
-  unsigned int depth;
   iter::AtomicIter<unsigned int>* iterator;
 };
 
@@ -105,13 +96,9 @@ struct BFSProgramSpec {
     unsigned int index;
 
     if (prog.device.iterator->step(index)) {
-<<<<<<<< HEAD:src/main_harmonize.cu
-      prog.template async<BFSProgramOp>(&prog.device.node_arr[prog.device.root_node], 0);
-========
       Node &root = prog.device.node_arr[prog.device.root_node];
       atomicMin(&root.depth,0);
-      prog.template async<MyProgramOp>(&root, 0, nullptr);
->>>>>>>> braxtoncuneo-loop-revision:main_harmonize.cu
+      prog.template async<BFSProgramOp>(&root, 0);
     }
 
     return false;
@@ -164,7 +151,6 @@ int main_harmonize(int argc, char *argv[]) {
 
   // init DeviceState
   MyDeviceState ds;
-  ds.depth = 0; // unsigned int
   ds.root_node = args["root"]; // int
 
   iter::AtomicIter<unsigned int> host_iter(0, 1);
