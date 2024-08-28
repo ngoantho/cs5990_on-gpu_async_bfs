@@ -21,7 +21,7 @@ struct BFSProgramOp {
   __device__ static void eval(PROGRAM prog, Node *node, unsigned int current_depth, int previous) {
     // use as baseline for CPU version
     atomicCAS(&node->visited, 0, 1);
-    node->previous = previous;
+    atomicExch(&node->previous, previous);
 
     // Simpler version, without loop coalescing
     /*
