@@ -48,6 +48,7 @@ int main_queue(int argc, char *argv[]) {
       int edge_node_id = node_graph.edges[node->edge_offset + i];
       Node& edge_node = node_graph.nodes[edge_node_id];
       edge_node.depth = std::min(edge_node.depth, node->depth+1);
+      edge_node.previous = node->id;
       queue.push(&edge_node);
     }
   }
