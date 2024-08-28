@@ -54,7 +54,7 @@ struct FileParser {
       delimiter = " ";
     } else if (extension == ".csv") {
       comments = nullptr;
-      skip_first_line = true;
+      skip_first_line = false; // bugfix: sometimes misses
       delimiter = ",";
     }
   }
