@@ -7,10 +7,11 @@ struct Node {
   size_t edge_offset;
   unsigned int depth;
   unsigned int visited;
+  int previous;
 
   Node() {}
 
-  Node(int _id) : id(_id), edge_count(0), depth(0xFFFFFFFF), visited(0) {}
+  Node(int _id) : id(_id), edge_count(0), depth(0xFFFFFFFF), visited(0), previous(-1) {}
 };
 
 #endif

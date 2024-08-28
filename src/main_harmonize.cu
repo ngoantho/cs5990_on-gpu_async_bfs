@@ -15,13 +15,13 @@ using namespace util;
 #include "common.h"
 
 struct BFSProgramOp {
-  using Type = void (*)(Node* node, unsigned int current_depth);
+  using Type = void (*)(Node* node, unsigned int current_depth, int previous);
 
   template <typename PROGRAM>
-  __device__ static void eval(PROGRAM prog, Node *node, unsigned int current_depth) {
+  __device__ static void eval(PROGRAM prog, Node *node, unsigned int current_depth, int previous) {
     // use as baseline for CPU version
     atomicCAS(&node->visited, 0, 1);
-
+    node->previous = previous;
 
     // Simpler version, without loop coalescing
     /*
@@ -51,7 +51,7 @@ struct BFSProgramOp {
       }
       if ( hit ) {
         Node& edge_node = prog.device.node_arr[edge_node_id];
-        prog.template async<BFSProgramOp>(&edge_node, current_depth + 1);
+        prog.template async<BFSProgramOp>(&edge_node, current_depth + 1, node->id);
       }
     }
     //*/
@@ -98,7 +98,7 @@ struct BFSProgramSpec {
     if (prog.device.iterator->step(index)) {
       Node &root = prog.device.node_arr[prog.device.root_node];
       atomicMin(&root.depth,0);
-      prog.template async<BFSProgramOp>(&root, 0);
+      prog.template async<BFSProgramOp>(&root, 0, -1);
     }
 
     return false;
