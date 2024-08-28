@@ -11,7 +11,7 @@ void common_for(std::ostream& dest, std::vector<Node>& nodes, bool output_previo
   for (Node &i : nodes) {
     dest << i.id << ": depth=" << i.depth << ", visited=" << i.visited;
     if (output_previous) {
-      std::string previous = (i.previous == -1) ? "none" : std::to_string(i.previous);
+      std::string previous = (i.previous == -1) ? "" : std::to_string(i.previous);
       std::cout << ", previous=" << previous;
     }
     std::cout << std::endl;
