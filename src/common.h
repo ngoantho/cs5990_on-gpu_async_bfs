@@ -12,9 +12,9 @@ void common_for(std::ostream& dest, std::vector<Node>& nodes, bool output_previo
     dest << i.id << ": depth=" << i.depth << ", visited=" << i.visited;
     if (output_previous) {
       std::string previous = (i.previous == -1) ? "" : std::to_string(i.previous);
-      std::cout << ", previous=" << previous;
+      dest << ", previous=" << previous;
     }
-    std::cout << std::endl;
+    dest << std::endl;
   }
 }
 
