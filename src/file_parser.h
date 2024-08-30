@@ -100,6 +100,9 @@ struct FileParser {
       } else if (skip_first_line && !skipped_first_line) {
         if (verbose) std::cout << "skipping first line" << std::endl;
         skipped_first_line = true;
+      } else if (line == "") {
+        if (verbose) std::cout << "skipping empty line" << std::endl;
+        continue;
       } else {
         std::stringstream ss(line);
         std::string token;

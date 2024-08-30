@@ -37,12 +37,18 @@ struct NodeGraph {
     }
 
     int max_edge = *std::max_element(edges.begin(), edges.end());
-    if (max_edge > node_count) {
+    if (verbose) {
+      std::cout << "max edge: " << max_edge << std::endl;
+      std::cout << "node count: " << node_count << std::endl;
+    }
+    if (max_edge >= node_count) {
       nodes.resize(max_edge + 1); // edges may reference nodes not added yet
+      if (verbose) {
+        std::cout << "resizing graph to: " << nodes.size() << std::endl;
+      }
 
-      int diff = max_edge - node_count;
-      for (int i = 1; i <= diff; i++) {
-        nodes.at(node_count + i) = Node(node_count + i);
+      for (int i = node_count; i < nodes.size(); i++) {
+        nodes.at(i) = Node(i);
       }
     }
   }

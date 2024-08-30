@@ -4,6 +4,6 @@
     "iosfwd": "cpp",
     "fstream": "cpp"
   },
-  "workbench.preferredDarkColorTheme": "Visual Studio Dark - C++",
+  "workbench.preferredDarkColorTheme": "Default Dark Modern",
   "window.autoDetectColorScheme": true
 }

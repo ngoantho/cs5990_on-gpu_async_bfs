@@ -14,13 +14,12 @@ int main(int argc, char *argv[]) {
     file_parser.parse_arguments(args);
 
   std::map<int, std::vector<int>>& adjgraph = file_parser.parse_file(file_str, directed);
-  NodeGraph node_graph(adjgraph);
+  NodeGraph node_graph(adjgraph, true);
   
   for (Node& node : node_graph.nodes) {
     std::cout << node.id << ": edge_count=" << node.edge_count << std::endl;
     size_t offset = node.edge_offset;
-    for (size_t i = 0; i < node.edge_count; i++)
-    {
+    for (size_t i = 0; i < node.edge_count; i++) {
       int edge_node_id = node_graph.edges[offset + i];
       std::cout << "- " << edge_node_id << std::endl;
     }
