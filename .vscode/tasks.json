@@ -9,9 +9,9 @@
       "command": "xonsh"
     },
     {
-      "label": "vim",
+      "label": "nvim",
       "type": "process",
-      "command": "vim"
+      "command": "nvim"
     }
   ]
 }
