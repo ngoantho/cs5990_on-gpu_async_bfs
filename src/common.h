@@ -20,12 +20,15 @@ void common_for(std::ostream& dest, std::vector<Node>& nodes, bool output_previo
 
 void common_output(cli::ArgSet& args, float runtime, std::vector<Node>& nodes, std::string type) {
   bool output_previous = args["output_previous"] | args["output-previous"];
+
   const char* output = args.get_flag_str((char*)"output");
   if (output == nullptr) {
-    output = std::string("runtime").c_str();
+    output = std::string("runtime-raw").c_str();
   }
 
-  if (std::string(output) == "runtime") {
+  if (std::string(output) == "runtime-raw") {
+    std::cout << runtime << std::endl;
+  } else if (std::string(output) == "runtime") {
     std::cout << "Runtime: " << runtime << "ms" << std::endl;
   } else if (std::string(output) == "state") {
     common_for(std::cout, nodes, output_previous);
