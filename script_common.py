@@ -27,7 +27,7 @@ datasets = """
 def subprocess_call(process:str, dataset:str, root_node:str, program:str|None, directed:bool, *args):
   return subprocess.run([process, '-file', dataset, '-root', root_node, "-program", program if program != None else str(None), "-directed" if directed else "", *args], stdout=subprocess.PIPE)
 
-def run(output_filename:str, process:str, program:str, *args:list[str]):
+def run(output_filename:str, process:str, program:str, directed:bool, *args:list[str]):
   output = open(output_filename, "w")
   output.write("dataset,root node,program,directed,runtime (ms)\n")
 
@@ -53,12 +53,8 @@ def run(output_filename:str, process:str, program:str, *args:list[str]):
     root_node = str(random.choice(nodes))
     dataset_filename = path.basename(dataset)
 
-    call_directed = subprocess_call(process, dataset, root_node, program, True, *args)
-    runtime_directed = call_directed.stdout.decode().strip()
-    output.write(f"{dataset_filename},{root_node},{program},true,{runtime_directed}\n")
-
-    call_undirected = subprocess_call(process, dataset, root_node, program, False, *args)
-    runtime_undirected = call_undirected.stdout.decode().strip()
-    output.write(f"{dataset_filename},{root_node},{program},false,{runtime_undirected}\n")
+    call = subprocess_call(process, dataset, root_node, program, directed, *args)
+    runtime = call.stdout.decode().strip()
+    output.write(f"{dataset_filename},{root_node},{program},{directed},{runtime}\n")
 
   output.close()
