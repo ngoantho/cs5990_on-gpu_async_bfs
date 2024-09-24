@@ -1,10 +1,55 @@
-from script_common import run
+from script_common import run, get_root_node, datasets
 
 group_count = 240
 cycle_count = 10000
 
-run('./out/results_harmonize_event_directed.csv', './harmonize.exe', 'event', True, '-group-count', str(group_count), "-cycle-count", str(cycle_count))
-run('./out/results_harmonize_event_undirected.csv', './harmonize.exe', 'event', False, '-group-count', str(group_count), "-cycle-count", str(cycle_count))
+def main_harmonize(dataset:str, root_node:int):
+  run(
+      "./out/results_harmonize_event_directed.csv",
+      "./harmonize.exe",
+      dataset,
+      root_node,
+      "event",
+      True,
+      "-group-count",
+      str(group_count),
+      "-cycle-count",
+      str(cycle_count),
+  )
+  run(
+      "./out/results_harmonize_event_undirected.csv",
+      "./harmonize.exe",
+      dataset,
+      root_node,
+      "event",
+      False,
+      "-group-count",
+      str(group_count),
+      "-cycle-count",
+      str(cycle_count),
+  )
 
-run('./out/results_harmonize_async_directed.csv', './harmonize.exe', 'async', True, '-group-count', str(group_count), "-cycle-count", str(cycle_count))
-run('./out/results_harmonize_async_undirected.csv', './harmonize.exe', 'async', False, '-group-count', str(group_count), "-cycle-count", str(cycle_count))
+  run(
+      "./out/results_harmonize_async_directed.csv",
+      "./harmonize.exe",
+      dataset,
+      root_node,
+      "async",
+      True,
+      "-group-count",
+      str(group_count),
+      "-cycle-count",
+      str(cycle_count),
+  )
+  run(
+      "./out/results_harmonize_async_undirected.csv",
+      "./harmonize.exe",
+      dataset,
+      root_node,
+      "async",
+      False,
+      "-group-count",
+      str(group_count),
+      "-cycle-count",
+      str(cycle_count),
+  )
