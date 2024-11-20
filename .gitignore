@@ -31,7 +31,10 @@
 *.out
 *.app
 
+# File formats
 *:Zone.Identifier*
 *.zip
 *.pyc
+
+# Ignore out
 /out
