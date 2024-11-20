@@ -34,4 +34,4 @@
 *:Zone.Identifier*
 *.zip
 *.pyc
-out/
+/out
