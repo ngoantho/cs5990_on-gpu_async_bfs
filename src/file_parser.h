@@ -10,9 +10,6 @@
 #include <vector>
 #include <algorithm>
 
-#include <filesystem>
-namespace fs = std::filesystem;
-
 #include "cli_argset.h"
 
 bool string_contains(std::string str, std::string sub) {
@@ -32,22 +29,26 @@ struct FileParser {
         comments(nullptr), skip_first_line(false), delimiter(nullptr) 
   {}
 
-  fs::path get_extension(char* file_str) {
+  std::string get_extension(char* file_str) {
     if (file_str == nullptr) {
       std::cerr << "file string null" << std::endl;
       std::exit(1);
     }
-    fs::path path(file_str);
-    return path.extension();
+    
+    size_t dotPos = std::string(file_str).rfind('.');
+    if (dotPos != std::string::npos) {
+      return std::string(file_str).substr(dotPos);
+    }
+    return "";
   }
 
   bool known_extension(char* file_str) {
-    fs::path extension = get_extension(file_str);
+    std::string extension = get_extension(file_str);
     return extension == ".mtx" || extension == ".csv";
   }
 
   void parse_extension(char* file_str) {
-    fs::path extension = get_extension(file_str);
+    std::string extension = get_extension(file_str);
     if (extension == ".mtx") {
       comments = "%%";
       skip_first_line = true;

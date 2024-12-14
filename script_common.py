@@ -29,7 +29,7 @@ def subprocess_call(
     process: str,
     dataset: str,
     root_node: int,
-    program: str | None,
+    program: str,
     directed: bool,
     *args,
 ):

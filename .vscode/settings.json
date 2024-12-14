@@ -4,6 +4,6 @@
     "iosfwd": "cpp",
     "fstream": "cpp"
   },
-  "workbench.preferredDarkColorTheme": "Default Dark Modern",
+  "workbench.preferredDarkColorTheme": "GitHub Dark",
   "window.autoDetectColorScheme": true
 }
