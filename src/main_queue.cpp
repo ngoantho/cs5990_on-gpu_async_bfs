@@ -33,6 +33,7 @@ int main_queue(int argc, char *argv[]) {
 
   std::queue<Node*> queue;
   root_node->depth = 0;
+  root_node->visited = 1;
   queue.push(root_node);
 
   auto start = high_resolution_clock::now();
@@ -41,15 +42,14 @@ int main_queue(int argc, char *argv[]) {
     Node* node = queue.front();
     queue.pop();
 
-    if (node->visited == 1) continue;
-    else node->visited = 1;
-
     for (int i = 0; i < node->edge_count; i++) {
       int edge_node_id = node_graph.edges[node->edge_offset + i];
       Node& edge_node = node_graph.nodes[edge_node_id];
-      edge_node.depth = std::min(edge_node.depth, node->depth+1);
-      edge_node.previous = node->id;
-      queue.push(&edge_node);
+      if (edge_node.visited != 1) {
+        edge_node.visited = 1;
+        edge_node.depth = std::min(edge_node.depth, node->depth+1);
+        queue.push(&edge_node);
+      }
     }
   }
 

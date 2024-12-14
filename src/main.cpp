@@ -1,4 +1,4 @@
-#define MAIN
+#define MAIN // disable main_harmonize's main
 
 #include "main_harmonize.cu"
 #include "main_queue.cpp"
