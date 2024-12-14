@@ -1,64 +1,43 @@
 #include "../harmonize.git/harmonize/cpp/harmonize.h"
 using namespace util;
 
+#include <stdio.h>
+
 #include <fstream>
 #include <iostream>
 #include <map>
 #include <sstream>
-#include <stdio.h>
 #include <string>
 #include <vector>
 
-#include "node.h"
-#include "file_parser.h"
-#include "node_graph.h"
 #include "common.h"
+#include "file_parser.h"
+#include "node.h"
+#include "node_graph.h"
 
 struct BFSProgramOp {
-  using Type = void (*)(Node* node, unsigned int current_depth, int previous);
+  using Type = void (*)(Node* node);
 
-  template <typename PROGRAM>
-  __device__ static void eval(PROGRAM prog, Node *node, unsigned int current_depth, int previous) {
-    // use as baseline for CPU version
-    atomicCAS(&node->visited, 0, 1);
-    atomicExch(&node->previous, previous);
-
-    // Simpler version, without loop coalescing
-    /*
-    for (int i = 0; i < node->edge_count; i++) {
-
-      unsigned int edge_node_id = prog.device.edge_arr[node->edge_offset + i];
-      Node& edge_node = prog.device.node_arr[edge_node_id];
-
-      if (atomicMin(&edge_node.depth, current_depth+1) > current_depth+1) {
-        prog.template async<BFSProgramOp>(&edge_node, current_depth + 1, node);
-      }
-    }
-    */
-
-    //* with loop coalescing
-    for (int i = 0; i < node->edge_count; i++) {
-      int edge_node_id;
-      bool hit = false;
-      while ( (!hit) && (i < node->edge_count) ){
-        edge_node_id = prog.device.edge_arr[node->edge_offset + i];
-        Node& edge_node = prog.device.node_arr[edge_node_id];
-        if (atomicMin(&edge_node.depth, current_depth+1) > current_depth+1) {
-          hit = true;
-          break;
-        }
-        i++;
-      }
-      if ( hit ) {
-        Node& edge_node = prog.device.node_arr[edge_node_id];
-        prog.template async<BFSProgramOp>(&edge_node, current_depth + 1, node->id);
-      }
-    }
-    //*/
-
+  // store edges/nodes in single arrays at offsets
+  template <typename PROGRAM> __device__ static Node& get_edge_node(PROGRAM prog, Node* node, int i) {
+    int edge_node_id = prog.device.edge_arr[node->edge_offset + i];
+    Node& edge_node = prog.device.node_arr[edge_node_id];
+    return edge_node;
   }
 
+  template <typename PROGRAM> __device__ static void eval(PROGRAM prog, Node* node) {
+    // explore neighbors
+    for (int i = 0; i < node->edge_count; i++) {
+      Node& edge_node = get_edge_node(prog, node, i);
 
+      // if neighbor not visited, mark for next visit
+      if (edge_node.visited != 1) {
+        atomicCAS(&edge_node.visited, 0, 1);
+        atomicMin(&edge_node.depth, node->depth+1);
+        prog.template async<BFSProgramOp>(&edge_node);
+      }
+    }
+  }
 };
 
 // The device state, itself, is an immutable struct, but can contain references
@@ -74,9 +53,9 @@ struct BFSProgramSpec {
   typedef OpUnion<BFSProgramOp> OpSet;
   typedef MyDeviceState DeviceState;
 
-  static const size_t STASH_SIZE =   16;
+  static const size_t STASH_SIZE = 16;
   static const size_t FRAME_SIZE = 8191;
-  static const size_t POOL_SIZE  = 8191;
+  static const size_t POOL_SIZE = 8191;
 
   /*
     type PROGRAM {
@@ -96,9 +75,10 @@ struct BFSProgramSpec {
     unsigned int index;
 
     if (prog.device.iterator->step(index)) {
-      Node &root = prog.device.node_arr[prog.device.root_node];
-      atomicMin(&root.depth,0);
-      prog.template async<BFSProgramOp>(&root, 0, -1);
+      Node& root = prog.device.node_arr[prog.device.root_node];
+      atomicMin(&root.depth, 0); // baseline
+      atomicCAS(&root.visited, 0, 1); // skip root
+      prog.template async<BFSProgramOp>(&root);
     }
 
     return false;
@@ -108,8 +88,13 @@ struct BFSProgramSpec {
 using AsyncProgType = AsyncProgram<BFSProgramSpec>;
 using EventProgType = EventProgram<BFSProgramSpec>;
 
-template<typename ProgType, typename ProgTypeInstance>
-void run_kernel(MyDeviceState ds, unsigned int arena_size, unsigned int group_count, unsigned int cycle_count) {
+template <typename ProgType, typename ProgTypeInstance>
+void run_kernel(MyDeviceState ds, cli::ArgSet& args, size_t node_graph_size) {
+  // arguments
+  unsigned int group_count = args["group_count"] | args["group-count"];         // batch count
+  unsigned int cycle_count = args["cycle_count"] | args["cycle-count"];         // run count
+  unsigned int arena_size = args["arena_size"] | args["arena-size"] | 0x100000; // amount of memory to allocate
+  
   ProgTypeInstance instance(arena_size, ds);
   cudaDeviceSynchronize();
   host::check_error();
@@ -119,23 +104,31 @@ void run_kernel(MyDeviceState ds, unsigned int arena_size, unsigned int group_co
   cudaDeviceSynchronize();
   host::check_error();
 
+  // factor out init time
+  Stopwatch watch;
+  watch.start();
+
   // exec program instance
   do {
-    // Give the number of work groups and the size of the chunks pulled from the io buffer
+    // Give the number of work groups and the size of the chunks pulled from the
+    // io buffer
     exec<ProgType>(instance, group_count, cycle_count);
     cudaDeviceSynchronize();
     host::check_error();
   } while (!instance.complete());
+
+  watch.stop();
+  float msec = watch.ms_duration();
+
+  host::DevBuf<Node> dev_nodes(ds.node_arr, node_graph_size);
+  std::vector<Node> out_host;
+  dev_nodes >> out_host;
+  common_output(args, msec, out_host, "harmonize");
 }
 
-int main_harmonize(int argc, char *argv[]) {
+int main_harmonize(int argc, char* argv[]) {
   cli::ArgSet args(argc, argv);
   bool directed = args["directed"];
-
-  // arguments
-  unsigned int group_count = args["group_count"] | args["group-count"]; // batch count
-  unsigned int cycle_count = args["cycle_count"] | args["cycle-count"]; // run count
-  unsigned int arena_size = args["arena_size"] | args["arena-size"] | 0x100000; // amount of memory to allocate
 
   char* file_str = args.get_flag_str((char*)"file");
   if (file_str == nullptr) {
@@ -175,27 +168,15 @@ int main_harmonize(int argc, char *argv[]) {
   dev_nodes << node_graph.nodes;
   ds.node_arr = dev_nodes;
 
-  Stopwatch watch;
-  watch.start();
-
   if (std::string(program_type) == "async") {
-    run_kernel<AsyncProgType, AsyncProgType::Instance>(ds, arena_size, group_count, cycle_count);
+    run_kernel<AsyncProgType, AsyncProgType::Instance>(ds, args, node_graph.nodes.size());
   } else if (std::string(program_type) == "event") {
-    run_kernel<EventProgType, EventProgType::Instance>(ds, arena_size, group_count, cycle_count);
+    run_kernel<EventProgType, EventProgType::Instance>(ds, args, node_graph.nodes.size());
   }
-
-  watch.stop();
-  float msec = watch.ms_duration();
-
-  std::vector<Node> out_host;
-  dev_nodes >> out_host;
-  common_output(args, msec, out_host, "harmonize");
 
   return 0;
 }
 
 #ifndef MAIN
-int main(int argc, char *argv[]) {
-  return main_harmonize(argc, argv);
-}
+int main(int argc, char* argv[]) { return main_harmonize(argc, argv); }
 #endif
