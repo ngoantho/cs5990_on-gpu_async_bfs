@@ -16,7 +16,7 @@ using namespace util;
 #include "node_graph.h"
 
 struct BFSProgramOp {
-  using Type = void (*)(Node* node);
+  using Type = void (*)(Node* node, int print_debug);
 
   // store edges/nodes in single arrays at offsets
   template <typename PROGRAM> __device__ static Node& get_edge_node(PROGRAM prog, Node* node, int i) {
@@ -25,7 +25,12 @@ struct BFSProgramOp {
     return edge_node;
   }
 
-  template <typename PROGRAM> __device__ static void eval(PROGRAM prog, Node* node) {
+  template <typename PROGRAM> __device__ static void eval(PROGRAM prog, Node* node, int print_debug) {
+    if (print_debug) {
+      int tid = blockIdx.x * blockDim.x + threadIdx.x;
+      printf("thread %i: node %i\n", tid, node->id);
+    }
+    
     // explore neighbors
     for (int i = 0; i < node->edge_count; i++) {
       Node& edge_node = get_edge_node(prog, node, i);
@@ -34,7 +39,7 @@ struct BFSProgramOp {
       if (edge_node.visited != 1) {
         atomicCAS(&edge_node.visited, 0, 1);
         atomicMin(&edge_node.depth, node->depth+1);
-        prog.template async<BFSProgramOp>(&edge_node);
+        prog.template async<BFSProgramOp>(&edge_node, prog.device.print_debug);
       }
     }
   }
@@ -46,6 +51,7 @@ struct MyDeviceState {
   Node* node_arr;
   int* edge_arr;
   int root_node;
+  int print_debug;
   iter::AtomicIter<unsigned int>* iterator;
 };
 
@@ -78,7 +84,7 @@ struct BFSProgramSpec {
       Node& root = prog.device.node_arr[prog.device.root_node];
       atomicMin(&root.depth, 0); // baseline
       atomicCAS(&root.visited, 0, 1); // skip root
-      prog.template async<BFSProgramOp>(&root);
+      prog.template async<BFSProgramOp>(&root, prog.device.print_debug);
     }
 
     return false;
@@ -145,6 +151,7 @@ int main_harmonize(int argc, char* argv[]) {
   // init DeviceState
   MyDeviceState ds;
   ds.root_node = args["root"]; // int
+  ds.print_debug = args["print_debug"] | 0;
 
   iter::AtomicIter<unsigned int> host_iter(0, 1);
   host::DevBuf<iter::AtomicIter<unsigned int>> iterator;
