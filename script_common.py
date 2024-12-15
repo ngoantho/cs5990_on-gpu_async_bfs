@@ -87,6 +87,8 @@ def run(
             return
         elif "#" in dataset:
             return
+        
+        print(output_filename, process, dataset, '-root '+root_node, program, '-directed '+directed, *args)
         dataset_filename = path.basename(dataset)
 
         call = subprocess_call(process, dataset, root_node, program, directed, *args)
